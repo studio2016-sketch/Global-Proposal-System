@@ -1,0 +1,3 @@
+import type {Proposal,AcceptedSnapshot} from "./domain";
+export type ActivationCheck={ready:boolean;checks:{label:string;passed:boolean}[]};
+export function activationReadiness(input:{proposal:Proposal;snapshot?:AcceptedSnapshot;signatureVerified:boolean;paymentVerified:boolean}):ActivationCheck{const checks=[{label:"Accepted commercial snapshot exists",passed:Boolean(input.snapshot)},{label:"Snapshot matches current proposal",passed:Boolean(input.snapshot&&input.snapshot.proposalId===input.proposal.id&&input.snapshot.proposalVersion===input.proposal.version)},{label:"Signature verified by provider",passed:input.signatureVerified},{label:"Required deposit/payment verified",passed:input.paymentVerified}];return {ready:checks.every(c=>c.passed),checks};}
