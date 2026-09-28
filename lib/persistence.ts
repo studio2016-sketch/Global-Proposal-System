@@ -39,7 +39,7 @@ export async function commandCenterSnapshot(){
    (SELECT count(*)::int FROM wgos.projects) AS projects,
    (SELECT count(*)::int FROM wgos.tasks) AS tasks`,
   sql`SELECT id,title,stage,brand_id,estimated_value,target_date,updated_at FROM wgos.opportunities ORDER BY updated_at DESC LIMIT 12`,
-  sql`SELECT id,title,status,brand_id,client_name,total,updated_at FROM wgos.proposals ORDER BY updated_at DESC LIMIT 12`
+  sql`SELECT p.id,p.status,p.brand_id,p.one_time_total,p.monthly_total,p.updated_at,o.title AS opportunity_title,org.name AS organization_name FROM wgos.proposals p LEFT JOIN wgos.opportunities o ON o.id=p.opportunity_id LEFT JOIN wgos.organizations org ON org.id=p.organization_id ORDER BY p.updated_at DESC LIMIT 12`
  ]);
  return {counts:counts[0],opportunities,proposals};
 }
