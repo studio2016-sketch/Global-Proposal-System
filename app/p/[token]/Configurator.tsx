@@ -1,5 +1,5 @@
 "use client";
-import {useMemo,useState} from "react";
+import {useEffect,useMemo,useState} from "react";
 
 type Item={
  id:string;
@@ -21,6 +21,8 @@ export default function Configurator({proposalId,version,items,token}:{proposalI
  const [accepted,setAccepted]=useState<any>(null);
  const [agreement,setAgreement]=useState<any>(null);
  const [signature,setSignature]=useState<any>(null);
+ const [closing,setClosing]=useState<any>(null);
+ const [payment,setPayment]=useState<any>(null);
  const local=useMemo(()=>items.filter(i=>i.required||selected.includes(i.id)),[items,selected]);
 
  async function recalc(ids:string[]){
@@ -56,6 +58,26 @@ export default function Configurator({proposalId,version,items,token}:{proposalI
   setBusy(false);
  }
 
+ useEffect(()=>{
+  if(!signature?.started)return;
+  let cancelled=false;
+  async function refresh(){
+   const r=await fetch("/api/proposals/closing-status",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({token,proposalId})});
+   const d=await r.json();if(!cancelled)setClosing(d);
+  }
+  refresh();const timer=setInterval(refresh,5000);
+  return()=>{cancelled=true;clearInterval(timer)};
+ },[signature?.started,token,proposalId]);
+
+ async function startPayment(){
+  setBusy(true);
+  const r=await fetch("/api/payments/start",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({token,proposalId})});
+  const d=await r.json();setPayment(d);setBusy(false);
+  if(d.started&&d.checkoutUrl)window.location.assign(d.checkoutUrl);
+ }
+
+ const signed=closing?.proposalStatus==="SIGNED"||closing?.agreementStatus==="SIGNED";
+ const paid=closing?.proposalStatus==="PAID"||closing?.paymentStatus==="PAID";
  const inv=result?.investment;
  return <>
   <section className="configurator">
@@ -85,12 +107,16 @@ export default function Configurator({proposalId,version,items,token}:{proposalI
    {agreement&&!agreement.prepared&&<p className="privateNote">{agreement.error||agreement.reason}</p>}
    {signature&&!signature.started&&<p className="privateNote">{signature.error||signature.reason}</p>}
 
-   {signature?.started&&signature.embeddedSigningUrl&&<div style={{marginTop:"24px"}}>
+   {signature?.started&&!signed&&signature.embeddedSigningUrl&&<div style={{marginTop:"24px"}}>
     <iframe title="Sign agreement" src={signature.embeddedSigningUrl} style={{width:"100%",minHeight:"720px",border:0,borderRadius:"18px"}} allow="clipboard-write"/>
    </div>}
 
+   {signed&&!paid&&<button className="primary" disabled={busy} onClick={startPayment}>{busy?"Preparing Secure Checkout…":"Submit Deposit →"}</button>}
+   {payment&&!payment.started&&<p className="privateNote">{payment.error||payment.reason}</p>}
+   {paid&&<p className="privateNote">Deposit verified. WGOS is ready for project activation.</p>}
+
    <p className="privateNote">
-    {signature?.started?"Your signing session is secured by SignWell. WGOS will only mark the agreement signed after server-side provider verification.":
+    {paid?"Your deposit has been verified by the payment provider.":signed?"Your signed agreement has been verified. The deposit is now available for secure checkout.":signature?.started?"Your signing session is secured by SignWell. WGOS will only mark the agreement signed after server-side provider verification.":
      agreement?.prepared?"Your accepted scope is locked to agreement "+agreement.agreementId+". Review and sign when ready.":
      accepted?.accepted?"Your exact commercial selection has been permanently preserved. Preparing agreement…":
      "Acceptance permanently preserves this exact proposal version and configured commercial scope."}
