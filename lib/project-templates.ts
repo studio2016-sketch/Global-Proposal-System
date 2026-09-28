@@ -34,6 +34,19 @@ export const projectTemplates:ProjectTemplate[]=[
   {key:"qc",title:"Setup, quality control and final verification",dependsOn:["build"],assigneeRole:"quality"},
   {key:"delivery",title:"Delivery and client handoff",dependsOn:["qc"],assigneeRole:"sales"}
  ]},
+ {key:"charmin-performance",brand:"charmin",name:"Charmin Greene Performance / Arrangement",tasks:[
+  {key:"advance",title:"Event advancing and client confirmation",assigneeRole:"booking"},
+  {key:"music",title:"Repertoire and horn arrangement preparation",dependsOn:["advance"],assigneeRole:"music"},
+  {key:"production",title:"Production / backline confirmation",dependsOn:["advance"],assigneeRole:"production"},
+  {key:"final",title:"Final performance readiness review",dependsOn:["music","production"],requiresApproval:true,assigneeRole:"owner"}
+ ]},
+ {key:"soundlegacy-engagement",brand:"soundLegacy",name:"Sound Legacy Institutional Engagement",tasks:[
+  {key:"kickoff",title:"Institutional kickoff and objectives confirmation",assigneeRole:"program"},
+  {key:"plan",title:"Program / initiative plan",dependsOn:["kickoff"],assigneeRole:"program"},
+  {key:"resources",title:"Resources, partners and logistics confirmation",dependsOn:["plan"],assigneeRole:"operations"},
+  {key:"approval",title:"Executive readiness approval",dependsOn:["resources"],requiresApproval:true,assigneeRole:"owner"},
+  {key:"launch",title:"Program activation",dependsOn:["approval"],assigneeRole:"program"}
+ ]},
  {key:"consulting-engagement",brand:"cgSuccess",name:"Strategic Consulting Engagement",tasks:[
   {key:"discovery",title:"Leadership discovery",assigneeRole:"consulting"},
   {key:"assessment",title:"Organizational assessment",dependsOn:["discovery"],assigneeRole:"consulting"},
