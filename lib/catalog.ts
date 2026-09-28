@@ -15,7 +15,9 @@ export const catalog:CatalogRule[]=[
 ,{id:"bo-standard",brand:"bassOne",label:"Bass One Instrument",description:"Masterfully crafted Bass One instrument.",kind:"one_time",pricing:"owner_quote",tags:["Standard Instrument"]}
 ,{id:"bo-custom",brand:"bassOne",label:"Custom Instrument Commission",description:"Player-specific custom instrument design and build.",kind:"one_time",pricing:"owner_quote",tags:["Custom Instrument","Bespoke Commission"]}
 ,{id:"cgs-consulting",brand:"cgSuccess",label:"Strategic Consulting Engagement",description:"Executive consulting and strategic advisory engagement.",kind:"one_time",pricing:"owner_quote",tags:["Consulting","Strategy","Executive Engagement"]}
-,{id:"cgs-org",brand:"cgSuccess",label:"Organizational Development Engagement",description:"Organizational systems and development engagement.",kind:"one_time",pricing:"owner_quote",tags:["Organizational Development"]}
+,{id:"cgs-org",brand:"cgSuccess",label:"Organizational Development Engagement",description:"Organizational systems and development engagement.",kind:"one_time",pricing:"owner_quote",tags:["Organizational Development"]},
+{id:"sli-program",brand:"soundLegacy",label:"Institutional Program Engagement",description:"Educational, preservation or community-impact program engagement.",kind:"one_time",pricing:"owner_quote",tags:["Program","Education","Institutional Engagement"]},
+{id:"sli-partnership",brand:"soundLegacy",label:"Institutional Partnership",description:"Ongoing institutional partnership, programming and stewardship.",kind:"recurring",pricing:"owner_quote",tags:["Partnership","Stewardship","Institutional Engagement"]}
 ];
 export function catalogFor(brand:BrandKey,projectType?:string){return catalog.filter(x=>x.brand===brand&&(!projectType||x.tags.includes(projectType)))}
 export function instantiate(rule:CatalogRule,approvedUnitAmount:number):CommercialItem{if(rule.pricing!=="fixed"&&approvedUnitAmount<=0)throw new Error("Owner-approved price required.");return {id:rule.id,name:rule.label,description:rule.description,kind:rule.kind,unitPrice:{currency:"USD",unitAmount:rule.unitAmount??approvedUnitAmount},quantity:1,selected:true};}
