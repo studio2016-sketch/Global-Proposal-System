@@ -137,3 +137,21 @@ export async function getClientProposalByTokenHash(tokenHash:string){
  WHERE p.public_token_hash=${tokenHash} AND p.status IN ('SENT','VIEWED','CONFIGURED','CLIENT_APPROVED','SIGNATURE_PENDING','SIGNED','PAYMENT_PENDING','PAID','ACTIVATED') LIMIT 1`;
  return rows[0]??null;
 }
+
+export async function acceptClientConfiguration(input:{tokenHash:string;proposalId:string;proposalVersion:number;selectedIds:string[];contentHash:string;snapshot:any;clientEmail?:string;oneTime:number;monthly:number;deposit:number}){
+ const sql=db();const snapshotJson=JSON.stringify(input.snapshot);
+ const rows=await sql`WITH eligible AS (
+  SELECT id FROM wgos.proposals WHERE id=${input.proposalId}::uuid AND version=${input.proposalVersion} AND public_token_hash=${input.tokenHash} AND status IN ('SENT','VIEWED','CONFIGURED')
+ ), ins AS (
+  INSERT INTO wgos.accepted_snapshots(proposal_id,proposal_version,content_hash,client_email,one_time_total,monthly_total,deposit_amount,snapshot)
+  SELECT id,${input.proposalVersion},${input.contentHash},${input.clientEmail??null},${input.oneTime},${input.monthly},${input.deposit},${snapshotJson}::jsonb FROM eligible
+  ON CONFLICT(content_hash) DO NOTHING RETURNING *
+ ), advanced AS (
+  UPDATE wgos.proposals p SET status='CLIENT_APPROVED',updated_at=now() FROM eligible e WHERE p.id=e.id RETURNING p.id
+ )
+ SELECT * FROM ins`;
+ const accepted:any=rows[0];
+ if(!accepted){const existing=await sql`SELECT * FROM wgos.accepted_snapshots WHERE content_hash=${input.contentHash} AND proposal_id=${input.proposalId}::uuid LIMIT 1`;if(existing[0])return existing[0];throw new Error("Proposal is not eligible for acceptance.");}
+ await sql`INSERT INTO wgos.audit_events(action,entity_type,entity_id,metadata) VALUES('CLIENT_SCOPE_ACCEPTED','PROPOSAL',${input.proposalId},jsonb_build_object('proposalVersion',${input.proposalVersion},'snapshotId',${accepted.id}::text,'contentHash',${input.contentHash}))`;
+ return accepted;
+}
