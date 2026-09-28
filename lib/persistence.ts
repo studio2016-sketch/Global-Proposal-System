@@ -43,3 +43,20 @@ export async function commandCenterSnapshot(){
  ]);
  return {counts:counts[0],opportunities,proposals};
 }
+
+export async function createProposalDraftFromOpportunity(opportunityId:string){
+ const sql=db();
+ return sql.transaction(async(tx:any)=>{
+  const rows=await tx`SELECT * FROM wgos.opportunities WHERE id=${opportunityId}::uuid FOR UPDATE`;
+  const o:any=rows[0]; if(!o)throw new Error("Opportunity not found");
+  if(o.proposal_id){
+   const existing=await tx`SELECT * FROM wgos.proposals WHERE id=${o.proposal_id} LIMIT 1`; return existing[0];
+  }
+  const content={source:"WGOS_DISCOVERY",discovery:o.discovery,recommendation:o.recommendation,commercial:{pricingAuthority:"OWNER",items:[],pricingComplete:false},client:{contactName:o.contact_name,contactEmail:o.contact_email},opportunity:{id:o.id,title:o.title}};
+  const proposals=await tx`INSERT INTO wgos.proposals(opportunity_id,brand_id,organization_id,status,content) VALUES(${o.id},${o.brand_id},${o.organization_id},'DRAFT',${JSON.stringify(content)}::jsonb) RETURNING *`;
+  const proposal:any=proposals[0];
+  await tx`UPDATE wgos.opportunities SET proposal_id=${proposal.id},stage='PROPOSAL',updated_at=now() WHERE id=${o.id}`;
+  await tx`INSERT INTO wgos.audit_events(action,entity_type,entity_id,metadata) VALUES('PROPOSAL_DRAFT_CREATED','PROPOSAL',${proposal.id}::text,${JSON.stringify({opportunityId:o.id,brand:o.brand_id,pricingAuthority:"OWNER"})}::jsonb)`;
+  return proposal;
+ });
+}
