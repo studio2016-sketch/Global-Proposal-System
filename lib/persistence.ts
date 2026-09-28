@@ -84,3 +84,24 @@ export async function getProposalWorkspace(id:string){
  WHERE p.id=${id}::uuid LIMIT 1`;
  return rows[0]??null;
 }
+
+export type CommercialRevisionItem={id:string;name:string;description?:string;kind:"one_time"|"recurring";unitPrice:{currency:"USD";unitAmount:number};quantity:number;selected:boolean;required?:boolean};
+export async function reviseProposalCommercial(input:{proposalId:string;items:CommercialRevisionItem[];depositRate:number;actor:string}){
+ if(!input.items.length)throw new Error("At least one commercial item is required.");
+ if(input.depositRate<0||input.depositRate>1)throw new Error("Deposit rate must be between 0 and 1.");
+ for(const i of input.items){if(!i.name?.trim())throw new Error("Item name required.");if(i.unitPrice?.currency!=="USD")throw new Error("Unsupported currency.");if(!Number.isFinite(i.unitPrice?.unitAmount)||i.unitPrice.unitAmount<0)throw new Error("Invalid commercial amount.");if(!Number.isInteger(i.quantity)||i.quantity<1)throw new Error("Invalid quantity.");}
+ const chosen=input.items.filter(i=>i.required||i.selected);
+ const oneTime=chosen.filter(i=>i.kind==="one_time").reduce((s,i)=>s+i.unitPrice.unitAmount*i.quantity,0);
+ const monthly=chosen.filter(i=>i.kind==="recurring").reduce((s,i)=>s+i.unitPrice.unitAmount*i.quantity,0);
+ const deposit=Math.round(oneTime*input.depositRate);
+ const sql=db(); const itemsJson=JSON.stringify(input.items);
+ const rows=await sql`UPDATE wgos.proposals SET
+  version=version+1,status='INTERNAL_REVIEW',one_time_total=${oneTime},monthly_total=${monthly},deposit_amount=${deposit},
+  content=jsonb_set(jsonb_set(content,'{commercial,items}',${itemsJson}::jsonb,true),'{commercial,pricingComplete}','true'::jsonb,true),
+  approved_by_subject=NULL,approved_at=NULL,updated_at=now()
+  WHERE id=${input.proposalId}::uuid
+  RETURNING *`;
+ const proposal:any=rows[0];if(!proposal)throw new Error("Proposal not found.");
+ await sql`INSERT INTO wgos.audit_events(actor_subject,action,entity_type,entity_id,metadata) VALUES(${input.actor},'COMMERCIAL_REVISION_SAVED','PROPOSAL',${proposal.id}::text,jsonb_build_object('version',${proposal.version},'oneTime',${oneTime},'monthly',${monthly},'deposit',${deposit}))`;
+ return proposal;
+}
