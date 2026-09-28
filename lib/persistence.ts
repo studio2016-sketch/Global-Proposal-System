@@ -258,7 +258,6 @@ export async function createAgreementFromAcceptedSnapshot(input:{snapshotId:stri
  VALUES(${x.proposal_id},${x.id},${x.content_hash},${x.proposal_version},${terms.id},${terms.terms_version},${agreementHash},${title},'READY_FOR_SIGNATURE')
  ON CONFLICT(content_hash) DO UPDATE SET updated_at=now() RETURNING *`;
  const agreement:any=rows[0];
- await sql`UPDATE wgos.proposals SET status='SIGNATURE_PENDING',updated_at=now() WHERE id=${x.proposal_id}`;
  await sql`INSERT INTO wgos.audit_events(action,entity_type,entity_id,metadata)
  VALUES('AGREEMENT_MANIFEST_CREATED','AGREEMENT',${agreement.id}::text,
   jsonb_build_object('proposalId',${x.proposal_id}::text,'proposalVersion',${x.proposal_version},'snapshotHash',${x.content_hash},'agreementHash',${agreementHash},'termsId',${terms.id}::text,'termsVersion',${terms.terms_version},'termsContentHash',${termsContentHash}))`;
@@ -274,6 +273,7 @@ export async function recordSignatureEnvelope(input:{agreementId:string;provider
  const sql=db();const meta=JSON.stringify({embeddedSigningUrl:input.url||null});
  const rows=await sql`UPDATE wgos.agreements SET status='SIGNATURE_PENDING',provider=${input.provider},provider_external_id=${input.externalId},updated_at=now() WHERE id=${input.agreementId}::uuid AND status='READY_FOR_SIGNATURE' RETURNING *`;
  const a:any=rows[0];if(!a)throw new Error("Agreement is not ready for signature.");
+ await sql`UPDATE wgos.proposals SET status='SIGNATURE_PENDING',updated_at=now() WHERE id=${a.proposal_id} AND status='CLIENT_APPROVED'`;
  await sql`INSERT INTO wgos.integration_links(entity_type,entity_id,provider,external_id,metadata) VALUES('AGREEMENT',${a.id},${input.provider},${input.externalId},${meta}::jsonb) ON CONFLICT(provider,external_id) DO NOTHING`;
  await sql`INSERT INTO wgos.audit_events(action,entity_type,entity_id,metadata) VALUES('SIGNATURE_ENVELOPE_CREATED','AGREEMENT',${a.id}::text,jsonb_build_object('provider',${input.provider},'externalId',${input.externalId}))`;return a;
 }
