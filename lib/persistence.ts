@@ -255,3 +255,58 @@ export async function recordPaymentProviderRequest(input:{paymentId:string;provi
  VALUES('PAYMENT_REQUEST_CREATED','PAYMENT',${payment.id}::text,jsonb_build_object('provider',${input.provider},'externalId',${input.externalId},'amount',${payment.amount}))`;
  return payment;
 }
+
+export async function getPaymentCheckoutContext(input:{paymentId:string;tokenHash:string}){
+ const sql=db();
+ const rows=await sql`SELECT pay.*,s.client_email,p.public_token_hash
+ FROM wgos.payments pay
+ JOIN wgos.accepted_snapshots s ON s.id=pay.snapshot_id
+ JOIN wgos.proposals p ON p.id=pay.proposal_id
+ WHERE pay.id=${input.paymentId}::uuid
+ AND p.public_token_hash=${input.tokenHash}
+ AND pay.status IN ('READY_FOR_PROVIDER','PAYMENT_PENDING')
+ LIMIT 1`;
+ return rows[0]??null;
+}
+
+export async function processVerifiedPaymentCompletion(input:{
+ provider:string;
+ externalEventId:string;
+ externalSessionId:string;
+ paymentId:string;
+ payloadHash:string;
+}){
+ const sql=db();
+ const rows=await sql`WITH ev AS (
+  INSERT INTO wgos.provider_events(provider,external_event_id,event_type,payload_hash,processed_at)
+  VALUES(${input.provider},${input.externalEventId},'checkout.session.completed',${input.payloadHash},now())
+  ON CONFLICT(provider,external_event_id) DO NOTHING
+  RETURNING id
+ ), paid AS (
+  UPDATE wgos.payments pay
+  SET status='PAID',paid_at=now(),updated_at=now()
+  FROM ev
+  WHERE pay.id=${input.paymentId}::uuid
+    AND pay.provider=${input.provider}
+    AND pay.provider_external_id=${input.externalSessionId}
+    AND pay.status='PAYMENT_PENDING'
+  RETURNING pay.*
+ ), proposal AS (
+  UPDATE wgos.proposals p
+  SET status='PAID',updated_at=now()
+  FROM paid x
+  WHERE p.id=x.proposal_id
+  RETURNING p.id
+ )
+ SELECT * FROM paid`;
+ if(rows[0]){
+  const x:any=rows[0];
+  await sql`INSERT INTO wgos.audit_events(action,entity_type,entity_id,metadata)
+   VALUES('PAYMENT_COMPLETION_VERIFIED','PAYMENT',${x.id}::text,
+   jsonb_build_object('provider',${input.provider},'externalSessionId',${input.externalSessionId},'eventId',${input.externalEventId},'amount',${x.amount}))`;
+  return {processed:true,duplicate:false,paymentId:x.id,proposalId:x.proposal_id,paidAt:x.paid_at};
+ }
+ const prior=await sql`SELECT id FROM wgos.provider_events WHERE provider=${input.provider} AND external_event_id=${input.externalEventId} LIMIT 1`;
+ if(prior[0])return {processed:true,duplicate:true};
+ throw new Error("No pending WGOS payment matches the verified Stripe session.");
+}
