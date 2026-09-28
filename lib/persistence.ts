@@ -219,3 +219,39 @@ export async function processVerifiedSignatureCompletion(input:{provider:string;
  if(prior[0])return {processed:true,duplicate:true};
  throw new Error("No pending WGOS agreement matches the verified provider document.");
 }
+
+export async function prepareDepositPayment(input:{proposalId:string;tokenHash:string}){
+ const sql=db();
+ const rows=await sql`WITH source AS (
+  SELECT p.id AS proposal_id,a.snapshot_id,s.deposit_amount
+  FROM wgos.proposals p
+  JOIN wgos.agreements a ON a.proposal_id=p.id AND a.status='SIGNED'
+  JOIN wgos.accepted_snapshots s ON s.id=a.snapshot_id AND s.proposal_id=p.id AND s.proposal_version=p.version
+  WHERE p.id=${input.proposalId}::uuid AND p.public_token_hash=${input.tokenHash} AND p.status='SIGNED' AND s.deposit_amount>0
+  ORDER BY a.signed_at DESC NULLS LAST LIMIT 1
+ ), ins AS (
+  INSERT INTO wgos.payments(proposal_id,snapshot_id,kind,amount,currency,status)
+  SELECT proposal_id,snapshot_id,'DEPOSIT',deposit_amount,'USD','READY_FOR_PROVIDER' FROM source
+  ON CONFLICT(snapshot_id,kind) DO UPDATE SET updated_at=now()
+  RETURNING *
+ )
+ SELECT * FROM ins`;
+ const payment:any=rows[0];
+ if(!payment)throw new Error("A verified signed agreement with a deposit is required before payment can begin.");
+ return payment;
+}
+
+export async function recordPaymentProviderRequest(input:{paymentId:string;provider:string;externalId:string;url?:string}){
+ const sql=db();const metadata=JSON.stringify({checkoutUrl:input.url||null});
+ const rows=await sql`UPDATE wgos.payments SET status='PAYMENT_PENDING',provider=${input.provider},provider_external_id=${input.externalId},updated_at=now()
+ WHERE id=${input.paymentId}::uuid AND status='READY_FOR_PROVIDER'
+ RETURNING *`;
+ const payment:any=rows[0];if(!payment)throw new Error("Payment is not ready for provider handoff.");
+ await sql`UPDATE wgos.proposals SET status='PAYMENT_PENDING',updated_at=now() WHERE id=${payment.proposal_id}`;
+ await sql`INSERT INTO wgos.integration_links(entity_type,entity_id,provider,external_id,metadata)
+ VALUES('PAYMENT',${payment.id},${input.provider},${input.externalId},${metadata}::jsonb)
+ ON CONFLICT(provider,external_id) DO NOTHING`;
+ await sql`INSERT INTO wgos.audit_events(action,entity_type,entity_id,metadata)
+ VALUES('PAYMENT_REQUEST_CREATED','PAYMENT',${payment.id}::text,jsonb_build_object('provider',${input.provider},'externalId',${input.externalId},'amount',${payment.amount}))`;
+ return payment;
+}
