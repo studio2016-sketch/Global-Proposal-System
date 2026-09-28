@@ -1,6 +1,7 @@
 import "server-only";
 import {db} from "./db";
 import type {SalesOpportunity,Organization,Contact,WorkProject,WorkTask} from "./operations";
+import {projectTemplates} from "./project-templates";
 
 export async function listOrganizations(){
  const sql=db(); return sql`SELECT id,name,type,website,notes,created_at,updated_at FROM wgos.organizations ORDER BY updated_at DESC`;
@@ -320,4 +321,59 @@ export async function getClientClosingStatus(input:{proposalId:string;tokenHash:
  WHERE p.id=${input.proposalId}::uuid AND p.public_token_hash=${input.tokenHash}
  LIMIT 1`;
  return rows[0]??null;
+}
+
+export async function activatePaidProposal(proposalId:string){
+ const sql=db();
+ const sourceRows=await sql`SELECT p.id,p.brand_id,p.organization_id,p.opportunity_id,p.status,o.title AS opportunity_title
+ FROM wgos.proposals p
+ LEFT JOIN wgos.opportunities o ON o.id=p.opportunity_id
+ WHERE p.id=${proposalId}::uuid AND p.status IN ('PAID','ACTIVATED')
+ LIMIT 1`;
+ const source:any=sourceRows[0];if(!source)throw new Error("Only a paid proposal can activate a project.");
+ const template=projectTemplates.find(t=>t.brand===source.brand_id);
+ if(!template)throw new Error("No project template is configured for this brand.");
+
+ const projectRows=await sql`INSERT INTO wgos.projects(brand_id,organization_id,opportunity_id,proposal_id,title,status,start_at)
+ VALUES(${source.brand_id},${source.organization_id},${source.opportunity_id},${source.id},
+  ${source.opportunity_title||template.name},'ACTIVE',now())
+ ON CONFLICT(proposal_id) WHERE proposal_id IS NOT NULL
+ DO UPDATE SET updated_at=now()
+ RETURNING *`;
+ const project:any=projectRows[0];
+
+ const ids=new Map<string,string>();
+ for(const task of template.tasks){
+  const description=task.assigneeRole?"Suggested role: "+task.assigneeRole:null;
+  const initialStatus=task.dependsOn?.length?"NOT_STARTED":"READY";
+  const dueAt=task.dueOffsetDays==null?null:new Date(Date.now()+task.dueOffsetDays*86400000).toISOString();
+  const inserted=await sql`INSERT INTO wgos.tasks(project_id,title,description,status,due_at,requires_approval,approval_role)
+   VALUES(${project.id},${task.title},${description},${initialStatus},${dueAt},${Boolean(task.requiresApproval)},${task.requiresApproval?"OWNER":null})
+   ON CONFLICT(project_id,title) DO NOTHING
+   RETURNING id`;
+  let id=inserted[0]?.id;
+  if(!id){
+   const existing=await sql`SELECT id FROM wgos.tasks WHERE project_id=${project.id} AND title=${task.title} LIMIT 1`;
+   id=existing[0]?.id;
+  }
+  if(!id)throw new Error("Unable to seed project task.");
+  ids.set(task.key,String(id));
+ }
+ for(const task of template.tasks){
+  const taskId=ids.get(task.key);if(!taskId)continue;
+  for(const dependencyKey of task.dependsOn||[]){
+   const dependencyId=ids.get(dependencyKey);if(!dependencyId)throw new Error("Project template dependency is invalid.");
+   await sql`INSERT INTO wgos.task_dependencies(task_id,depends_on_task_id)
+    VALUES(${taskId},${dependencyId})
+    ON CONFLICT(task_id,depends_on_task_id) DO NOTHING`;
+  }
+ }
+ if(source.opportunity_id)await sql`UPDATE wgos.opportunities SET stage='WON',updated_at=now() WHERE id=${source.opportunity_id}`;
+ const activated=await sql`UPDATE wgos.proposals SET status='ACTIVATED',updated_at=now() WHERE id=${source.id} AND status='PAID' RETURNING id`;
+ if(activated[0]){
+  await sql`INSERT INTO wgos.audit_events(action,entity_type,entity_id,metadata)
+   VALUES('PROJECT_ACTIVATED','PROJECT',${project.id}::text,
+   jsonb_build_object('proposalId',${source.id}::text,'templateKey',${template.key},'brand',${source.brand_id}))`;
+ }
+ return {project,templateKey:template.key,taskCount:template.tasks.length,activated:Boolean(activated[0])};
 }
