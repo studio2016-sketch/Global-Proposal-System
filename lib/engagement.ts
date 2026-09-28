@@ -1,0 +1,4 @@
+export type EngagementType="PROPOSAL_OPENED"|"SECTION_VIEWED"|"CONFIGURATION_CHANGED"|"RETURN_VISIT"|"ACCEPTANCE_STARTED";
+export type EngagementEvent={type:EngagementType;proposalId:string;version:number;occurredAt:string;metadata?:Record<string,string|number|boolean>};
+export type EngagementSummary={opens:number;returnVisits:number;configurationChanges:number;acceptanceStarted:boolean;lastActivity?:string};
+export function summarizeEngagement(events:EngagementEvent[]):EngagementSummary{const sorted=[...events].sort((a,b)=>a.occurredAt.localeCompare(b.occurredAt));return {opens:events.filter(e=>e.type==="PROPOSAL_OPENED").length,returnVisits:events.filter(e=>e.type==="RETURN_VISIT").length,configurationChanges:events.filter(e=>e.type==="CONFIGURATION_CHANGED").length,acceptanceStarted:events.some(e=>e.type==="ACCEPTANCE_STARTED"),lastActivity:sorted.at(-1)?.occurredAt};}
