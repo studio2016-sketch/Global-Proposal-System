@@ -119,3 +119,21 @@ export async function approvePersistentProposal(input:{proposalId:string;version
  VALUES(${input.actor},'PROPOSAL_VERSION_APPROVED','PROPOSAL',${proposal.id}::text,jsonb_build_object('version',${proposal.version},'status','APPROVED_TO_SEND'))`;
  return proposal;
 }
+
+export async function publishApprovedProposal(input:{proposalId:string;tokenHash:string;actor:string}){
+ const sql=db();
+ const rows=await sql`UPDATE wgos.proposals SET status='SENT',public_token_hash=${input.tokenHash},sent_at=now(),updated_at=now()
+ WHERE id=${input.proposalId}::uuid AND status='APPROVED_TO_SEND' AND approved_at IS NOT NULL AND approved_by_subject IS NOT NULL
+ RETURNING *`;
+ const proposal:any=rows[0];if(!proposal)throw new Error("Only an approved proposal can be published.");
+ await sql`INSERT INTO wgos.audit_events(actor_subject,action,entity_type,entity_id,metadata)
+ VALUES(${input.actor},'PROPOSAL_PUBLISHED','PROPOSAL',${proposal.id}::text,jsonb_build_object('version',${proposal.version},'status','SENT'))`;
+ return proposal;
+}
+export async function getClientProposalByTokenHash(tokenHash:string){
+ const sql=db();
+ const rows=await sql`SELECT p.*,o.title AS opportunity_title,o.discovery,o.recommendation,o.contact_name,o.contact_email,org.name AS organization_name
+ FROM wgos.proposals p LEFT JOIN wgos.opportunities o ON o.id=p.opportunity_id LEFT JOIN wgos.organizations org ON org.id=p.organization_id
+ WHERE p.public_token_hash=${tokenHash} AND p.status IN ('SENT','VIEWED','CONFIGURED','CLIENT_APPROVED','SIGNATURE_PENDING','SIGNED','PAYMENT_PENDING','PAID','ACTIVATED') LIMIT 1`;
+ return rows[0]??null;
+}
