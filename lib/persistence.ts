@@ -310,3 +310,14 @@ export async function processVerifiedPaymentCompletion(input:{
  if(prior[0])return {processed:true,duplicate:true};
  throw new Error("No pending WGOS payment matches the verified Stripe session.");
 }
+
+export async function getClientClosingStatus(input:{proposalId:string;tokenHash:string}){
+ const sql=db();
+ const rows=await sql`SELECT p.id,p.status,p.version,
+  (SELECT a.status FROM wgos.agreements a WHERE a.proposal_id=p.id ORDER BY a.created_at DESC LIMIT 1) AS agreement_status,
+  (SELECT pay.status FROM wgos.payments pay WHERE pay.proposal_id=p.id ORDER BY pay.created_at DESC LIMIT 1) AS payment_status
+ FROM wgos.proposals p
+ WHERE p.id=${input.proposalId}::uuid AND p.public_token_hash=${input.tokenHash}
+ LIMIT 1`;
+ return rows[0]??null;
+}
