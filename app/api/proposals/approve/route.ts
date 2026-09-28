@@ -1,9 +1,9 @@
-import {requireAdmin} from "../../../../lib/authz";
+import {requireApiAdmin} from "../../../../lib/authz";
 import {NextResponse} from "next/server";
 import {approvePersistentProposal} from "../../../../lib/persistence";
 
 export async function POST(req:Request){
- const identity:any=await requireAdmin();
+ const auth=await requireApiAdmin();if(!auth.ok)return NextResponse.json({approved:false,error:auth.error},{status:auth.status});const identity:any=auth.identity;
  try{
   const body=await req.json();
   if(!body.proposalId||!Number.isInteger(body.version))return NextResponse.json({approved:false,error:"proposalId and exact integer version are required"},{status:400});
