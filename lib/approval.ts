@@ -1,0 +1,4 @@
+import type {Proposal} from "./domain";
+export type ApprovalDecision={proposalId:string;version:number;approvedBy:string;approvedAt:string};
+export function approveProposal(p:Proposal,actor:string):Proposal{if(!actor.trim())throw new Error("Approver identity required.");if(p.status!=="INTERNAL_REVIEW")throw new Error("Proposal must be in internal review.");if(!p.items.length)throw new Error("Proposal requires commercial scope.");for(const i of p.items){if(i.unitPrice.unitAmount<0)throw new Error("Invalid commercial amount.");}const now=new Date().toISOString();return {...p,status:"APPROVED_TO_SEND",ownerApproval:{approvedAt:now,approvedBy:actor,version:p.version},updatedAt:now};}
+export function invalidateApproval(p:Proposal):Proposal{return {...p,status:"DRAFT",version:p.version+1,ownerApproval:undefined,updatedAt:new Date().toISOString()};}
