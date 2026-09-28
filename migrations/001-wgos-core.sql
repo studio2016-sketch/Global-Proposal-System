@@ -1,0 +1,37 @@
+-- WGOS core schema reconstructed from the verified production schema.
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+CREATE SCHEMA IF NOT EXISTS wgos;
+
+CREATE TABLE wgos.brands(id text PRIMARY KEY,name text NOT NULL,created_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE wgos.organizations(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),name text NOT NULL,type text NOT NULL CHECK(type IN ('CLIENT','PROSPECT','VENUE','VENDOR','PARTNER','INSTITUTION')),website text,notes text,created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE wgos.organization_brands(organization_id uuid NOT NULL REFERENCES wgos.organizations(id) ON DELETE CASCADE,brand_id text NOT NULL REFERENCES wgos.brands(id),PRIMARY KEY(organization_id,brand_id));
+CREATE TABLE wgos.contacts(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),organization_id uuid REFERENCES wgos.organizations(id) ON DELETE SET NULL,first_name text NOT NULL,last_name text NOT NULL,email text,phone text,role text,created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE wgos.contact_brands(contact_id uuid NOT NULL REFERENCES wgos.contacts(id) ON DELETE CASCADE,brand_id text NOT NULL REFERENCES wgos.brands(id),PRIMARY KEY(contact_id,brand_id));
+
+CREATE TABLE wgos.opportunities(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),brand_id text NOT NULL REFERENCES wgos.brands(id),organization_id uuid REFERENCES wgos.organizations(id) ON DELETE SET NULL,primary_contact_id uuid REFERENCES wgos.contacts(id) ON DELETE SET NULL,title text NOT NULL,stage text NOT NULL CHECK(stage IN ('NEW','QUALIFYING','DISCOVERY','PROPOSAL','NEGOTIATION','WON','LOST')),estimated_value numeric,target_date date,owner_subject text,created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now(),proposal_id uuid);
+CREATE INDEX opportunities_stage_idx ON wgos.opportunities(stage);
+
+CREATE TABLE wgos.proposals(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),opportunity_id uuid REFERENCES wgos.opportunities(id) ON DELETE SET NULL,brand_id text NOT NULL REFERENCES wgos.brands(id),organization_id uuid REFERENCES wgos.organizations(id) ON DELETE SET NULL,version integer NOT NULL DEFAULT 1 CHECK(version>0),status text NOT NULL,currency char(3) NOT NULL DEFAULT 'USD',one_time_total numeric NOT NULL DEFAULT 0,monthly_total numeric NOT NULL DEFAULT 0,deposit_amount numeric NOT NULL DEFAULT 0,content jsonb NOT NULL DEFAULT '{}'::jsonb,approved_by_subject text,approved_at timestamptz,sent_at timestamptz,created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now());
+ALTER TABLE wgos.opportunities ADD CONSTRAINT opportunities_proposal_id_fkey FOREIGN KEY(proposal_id) REFERENCES wgos.proposals(id) ON DELETE SET NULL;
+CREATE INDEX proposals_status_idx ON wgos.proposals(status);
+
+CREATE TABLE wgos.accepted_snapshots(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),proposal_id uuid NOT NULL REFERENCES wgos.proposals(id),proposal_version integer NOT NULL,content_hash text NOT NULL UNIQUE,client_email text,one_time_total numeric NOT NULL,monthly_total numeric NOT NULL,deposit_amount numeric NOT NULL,snapshot jsonb NOT NULL,accepted_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE wgos.agreements(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),proposal_id uuid NOT NULL REFERENCES wgos.proposals(id),snapshot_id uuid NOT NULL REFERENCES wgos.accepted_snapshots(id),snapshot_hash text NOT NULL,proposal_version integer NOT NULL,terms_version text NOT NULL,content_hash text NOT NULL UNIQUE,title text NOT NULL,status text NOT NULL,provider text,provider_external_id text,signed_at timestamptz,created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE wgos.payments(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),proposal_id uuid NOT NULL REFERENCES wgos.proposals(id),snapshot_id uuid NOT NULL REFERENCES wgos.accepted_snapshots(id),kind text NOT NULL DEFAULT 'DEPOSIT',amount numeric NOT NULL,currency char(3) NOT NULL DEFAULT 'USD',status text NOT NULL,provider text,provider_external_id text,paid_at timestamptz,created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now());
+
+CREATE TABLE wgos.projects(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),brand_id text NOT NULL REFERENCES wgos.brands(id),organization_id uuid REFERENCES wgos.organizations(id) ON DELETE SET NULL,opportunity_id uuid REFERENCES wgos.opportunities(id) ON DELETE SET NULL,proposal_id uuid REFERENCES wgos.proposals(id) ON DELETE SET NULL,title text NOT NULL,status text NOT NULL CHECK(status IN ('PLANNING','ACTIVE','BLOCKED','COMPLETE','CANCELLED')),start_at timestamptz,end_at timestamptz,owner_subject text,created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now());
+CREATE INDEX projects_status_idx ON wgos.projects(status);
+CREATE TABLE wgos.tasks(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),project_id uuid NOT NULL REFERENCES wgos.projects(id) ON DELETE CASCADE,parent_task_id uuid REFERENCES wgos.tasks(id) ON DELETE CASCADE,title text NOT NULL,description text,status text NOT NULL CHECK(status IN ('NOT_STARTED','READY','IN_PROGRESS','WAITING','BLOCKED','DONE','CANCELLED')),assignee_subject text,due_at timestamptz,requires_approval boolean NOT NULL DEFAULT false,approval_role text,created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now());
+CREATE INDEX tasks_project_status_idx ON wgos.tasks(project_id,status);
+CREATE INDEX tasks_due_idx ON wgos.tasks(due_at) WHERE due_at IS NOT NULL;
+CREATE TABLE wgos.task_dependencies(task_id uuid NOT NULL REFERENCES wgos.tasks(id) ON DELETE CASCADE,depends_on_task_id uuid NOT NULL REFERENCES wgos.tasks(id) ON DELETE CASCADE,CHECK(task_id<>depends_on_task_id),PRIMARY KEY(task_id,depends_on_task_id));
+
+CREATE TABLE wgos.automation_rules(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),name text NOT NULL,enabled boolean NOT NULL DEFAULT true,trigger jsonb NOT NULL,actions jsonb NOT NULL,created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE wgos.integration_links(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),entity_type text NOT NULL,entity_id uuid NOT NULL,provider text NOT NULL,external_id text NOT NULL,metadata jsonb NOT NULL DEFAULT '{}'::jsonb,created_at timestamptz NOT NULL DEFAULT now(),UNIQUE(provider,external_id));
+CREATE TABLE wgos.provider_events(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),provider text NOT NULL,external_event_id text NOT NULL,event_type text NOT NULL,payload_hash text,processed_at timestamptz,created_at timestamptz NOT NULL DEFAULT now(),UNIQUE(provider,external_event_id));
+CREATE TABLE wgos.audit_events(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),actor_subject text,action text NOT NULL,entity_type text NOT NULL,entity_id text NOT NULL,metadata jsonb NOT NULL DEFAULT '{}'::jsonb,created_at timestamptz NOT NULL DEFAULT now());
+CREATE INDEX audit_entity_idx ON wgos.audit_events(entity_type,entity_id,created_at DESC);
+
+INSERT INTO wgos.brands(id,name) VALUES
+('bassOne','Bass One Basses'),('cgSuccess','CG Success Enterprises'),('charmin','Charmin Greene'),('charminJermaine','Charmin & Jermaine'),('jermaine','Jermaine Williams'),('soundLegacy','Sound Legacy Institute'),('studio2016','Studio2016')
+ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name;
