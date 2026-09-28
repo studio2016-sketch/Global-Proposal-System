@@ -87,7 +87,7 @@ export async function getProposalWorkspace(id:string){
 }
 
 export type CommercialRevisionItem={id:string;name:string;description?:string;kind:"one_time"|"recurring";unitPrice:{currency:"USD";unitAmount:number};quantity:number;selected:boolean;required?:boolean};
-export async function reviseProposalCommercial(input:{proposalId:string;items:CommercialRevisionItem[];depositRate:number;actor:string}){
+export async function reviseProposalCommercial(input:{proposalId:string;expectedVersion:number;items:CommercialRevisionItem[];depositRate:number;actor:string}){
  if(!input.items.length)throw new Error("At least one commercial item is required.");
  if(input.depositRate<0||input.depositRate>1)throw new Error("Deposit rate must be between 0 and 1.");
  for(const i of input.items){if(!i.name?.trim())throw new Error("Item name required.");if(i.unitPrice?.currency!=="USD")throw new Error("Unsupported currency.");if(!Number.isFinite(i.unitPrice?.unitAmount)||i.unitPrice.unitAmount<0)throw new Error("Invalid commercial amount.");if(!Number.isInteger(i.quantity)||i.quantity<1)throw new Error("Invalid quantity.");}
@@ -100,9 +100,9 @@ export async function reviseProposalCommercial(input:{proposalId:string;items:Co
   version=version+1,status='INTERNAL_REVIEW',one_time_total=${oneTime},monthly_total=${monthly},deposit_amount=${deposit},
   content=jsonb_set(jsonb_set(content,'{commercial,items}',${itemsJson}::jsonb,true),'{commercial,pricingComplete}','true'::jsonb,true),
   approved_by_subject=NULL,approved_at=NULL,updated_at=now()
-  WHERE id=${input.proposalId}::uuid
+  WHERE id=${input.proposalId}::uuid AND version=${input.expectedVersion}
   RETURNING *`;
- const proposal:any=rows[0];if(!proposal)throw new Error("Proposal not found.");
+ const proposal:any=rows[0];if(!proposal)throw new Error("Proposal version changed or proposal was not found. Refresh before saving.");
  await sql`INSERT INTO wgos.audit_events(actor_subject,action,entity_type,entity_id,metadata) VALUES(${input.actor},'COMMERCIAL_REVISION_SAVED','PROPOSAL',${proposal.id}::text,jsonb_build_object('version',${proposal.version},'oneTime',${oneTime},'monthly',${monthly},'deposit',${deposit}))`;
  return proposal;
 }
@@ -113,6 +113,7 @@ export async function approvePersistentProposal(input:{proposalId:string;version
  WHERE id=${input.proposalId}::uuid AND version=${input.version} AND status='INTERNAL_REVIEW'
  AND COALESCE((content#>>'{commercial,pricingComplete}')::boolean,false)=true
  AND jsonb_array_length(COALESCE(content#>'{commercial,items}','[]'::jsonb))>0
+ AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(content#>'{commercial,items}','[]'::jsonb)) item WHERE COALESCE((item->>'required')::boolean,false)=true OR COALESCE((item->>'selected')::boolean,false)=true AND COALESCE((item#>>'{unitPrice,unitAmount}')::numeric,0)<=0)
  RETURNING *`;
  const proposal:any=rows[0];
  if(!proposal)throw new Error("Proposal is not eligible for approval. Confirm the exact version is in internal review with completed commercial pricing.");
