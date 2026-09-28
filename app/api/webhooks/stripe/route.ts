@@ -1,7 +1,7 @@
 import {NextResponse} from "next/server";
 import {createHash} from "crypto";
 import {retrieveStripeEvent,retrieveCheckoutSession,stripeConfigured} from "../../../../lib/stripe";
-import {processVerifiedPaymentCompletion} from "../../../../lib/persistence";
+import {processVerifiedPaymentCompletion,activatePaidProposal} from "../../../../lib/persistence";
 
 const acceptedTypes=new Set(["checkout.session.completed","checkout.session.async_payment_succeeded"]);
 
@@ -29,7 +29,8 @@ export async function POST(req:Request){
   if(!paymentId||!proposalId||!snapshotId)return NextResponse.json({received:true,processed:false,error:"WGOS payment metadata missing"},{status:409});
   const payloadHash=createHash("sha256").update(raw).digest("hex");
   const result=await processVerifiedPaymentCompletion({provider:"stripe",externalEventId:eventId,externalSessionId:authoritativeSessionId,paymentId,payloadHash});
-  return NextResponse.json({received:true,...result});
+  const activation=await activatePaidProposal(proposalId);
+  return NextResponse.json({received:true,...result,activation:{projectId:activation.project.id,templateKey:activation.templateKey,taskCount:activation.taskCount,activated:activation.activated}});
  }catch(e){
   return NextResponse.json({received:true,processed:false,error:e instanceof Error?e.message:"Stripe verification failed"},{status:409});
  }
