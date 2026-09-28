@@ -1,3 +1,3 @@
-import {requireAdmin} from "../../../lib/authz";
+import {requireAdmin} from "../../../../lib/authz";
 import {NextResponse} from "next/server";import {demoProposal} from "../../../../lib/demo";import {prepareDelivery} from "../../../../lib/send-gate";import {persistenceConfigured} from "../../../../lib/storage-contract";
 export async function POST(req:Request){await requireAdmin();try{const body=await req.json();if(body.proposalId!==demoProposal.id)return NextResponse.json({error:"Proposal not found"},{status:404});const delivery=prepareDelivery(demoProposal);if(!persistenceConfigured())return NextResponse.json({sent:false,reason:"PERSISTENCE_NOT_CONFIGURED",deliveryPreview:{proposalId:delivery.proposalId,version:delivery.version,clientEmail:delivery.clientEmail}},{status:503});return NextResponse.json({sent:false,reason:"DELIVERY_PROVIDER_PENDING"},{status:503});}catch(e){return NextResponse.json({error:e instanceof Error?e.message:"Send blocked"},{status:400});}}
