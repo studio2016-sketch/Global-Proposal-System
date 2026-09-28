@@ -76,3 +76,11 @@ export async function createProposalDraftFromOpportunity(opportunityId:string){
    jsonb_build_object('opportunityId',${opportunityId}::text,'brand',${proposal.brand_id}::text,'pricingAuthority','OWNER'))`;
  return proposal;
 }
+
+export async function getProposalWorkspace(id:string){
+ const sql=db();
+ const rows=await sql`SELECT p.*,o.title AS opportunity_title,o.discovery,o.recommendation,o.contact_name,o.contact_email,org.name AS organization_name
+ FROM wgos.proposals p LEFT JOIN wgos.opportunities o ON o.id=p.opportunity_id LEFT JOIN wgos.organizations org ON org.id=p.organization_id
+ WHERE p.id=${id}::uuid LIMIT 1`;
+ return rows[0]??null;
+}
