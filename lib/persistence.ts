@@ -29,3 +29,17 @@ export async function persistDiscoveryOpportunity(input:{legacyKey:string;brand:
  RETURNING *`;
  return rows[0];
 }
+
+export async function commandCenterSnapshot(){
+ const sql=db();
+ const [counts,opportunities,proposals]=await Promise.all([
+  sql`SELECT
+   (SELECT count(*)::int FROM wgos.opportunities) AS opportunities,
+   (SELECT count(*)::int FROM wgos.proposals) AS proposals,
+   (SELECT count(*)::int FROM wgos.projects) AS projects,
+   (SELECT count(*)::int FROM wgos.tasks) AS tasks`,
+  sql`SELECT id,title,stage,brand_id,estimated_value,target_date,updated_at FROM wgos.opportunities ORDER BY updated_at DESC LIMIT 12`,
+  sql`SELECT id,title,status,brand_id,client_name,total,updated_at FROM wgos.proposals ORDER BY updated_at DESC LIMIT 12`
+ ]);
+ return {counts:counts[0],opportunities,proposals};
+}
