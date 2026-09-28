@@ -1,0 +1,3 @@
+import type {Proposal} from "./domain";
+export function assertCanSend(p:Proposal){if(p.status!=="APPROVED_TO_SEND"||!p.ownerApproval||p.ownerApproval.version!==p.version)throw new Error("Owner approval is required for this exact proposal version before sending.");}
+export function assertClientVisible(p:Proposal){const visible=["SENT","VIEWED","CONFIGURED","CLIENT_APPROVED","SIGNATURE_PENDING","SIGNED","PAYMENT_PENDING","PAID","ACTIVATED"];if(!visible.includes(p.status))throw new Error("Proposal is not client-visible.");if(!p.ownerApproval||p.ownerApproval.version!==p.version)throw new Error("Proposal version is not owner-approved.");if(p.expiresAt&&new Date(p.expiresAt)<new Date())throw new Error("Proposal has expired.");}
