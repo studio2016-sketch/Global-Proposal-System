@@ -1,0 +1,3 @@
+export type AuditEventType="DISCOVERY_SUBMITTED"|"OPPORTUNITY_CREATED"|"DRAFT_CREATED"|"VERSION_REVISED"|"OWNER_APPROVED"|"PROPOSAL_SENT"|"PROPOSAL_VIEWED"|"CLIENT_CONFIGURED"|"CLIENT_APPROVED"|"SIGNATURE_REQUESTED"|"SIGNED"|"PAYMENT_REQUESTED"|"PAID"|"ACTIVATED";
+export type AuditEvent={id:string;type:AuditEventType;actor:"client"|"owner"|"system"|"integration";proposalId?:string;opportunityId?:string;version?:number;payload:Record<string,unknown>;occurredAt:string};
+export function event(type:AuditEventType,actor:AuditEvent["actor"],input:Omit<AuditEvent,"id"|"type"|"actor"|"occurredAt"|"payload">&{payload?:Record<string,unknown>}={}):AuditEvent{return {id:`evt_${crypto.randomUUID()}`,type,actor,...input,payload:input.payload??{},occurredAt:new Date().toISOString()};}
