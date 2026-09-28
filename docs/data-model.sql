@@ -1,3 +1,15 @@
+-- DEPRECATED REFERENCE MODEL
+-- This file described the pre-WGOS proposal-only prototype and is intentionally
+-- retained for historical context. It is NOT the production schema and must not
+-- be applied to Neon.
+--
+-- Canonical production architecture:
+--   migrations/001-wgos-core.sql (base schema; add when reconstructed from the
+--   original production migration)
+--   migrations/002-app-users.sql
+--   migrations/003-opportunity-intake.sql
+--   docs/production-database.md
+--
 -- Reference schema for managed Postgres. Apply only after a database is provisioned.
 create table brands (id text primary key, name text not null, config jsonb not null default '{}');
 create table clients (id uuid primary key default gen_random_uuid(), organization text not null, contact_name text, email text not null, created_at timestamptz not null default now());
