@@ -105,3 +105,17 @@ export async function reviseProposalCommercial(input:{proposalId:string;items:Co
  await sql`INSERT INTO wgos.audit_events(actor_subject,action,entity_type,entity_id,metadata) VALUES(${input.actor},'COMMERCIAL_REVISION_SAVED','PROPOSAL',${proposal.id}::text,jsonb_build_object('version',${proposal.version},'oneTime',${oneTime},'monthly',${monthly},'deposit',${deposit}))`;
  return proposal;
 }
+
+export async function approvePersistentProposal(input:{proposalId:string;version:number;actor:string}){
+ const sql=db();
+ const rows=await sql`UPDATE wgos.proposals SET status='APPROVED_TO_SEND',approved_by_subject=${input.actor},approved_at=now(),updated_at=now()
+ WHERE id=${input.proposalId}::uuid AND version=${input.version} AND status='INTERNAL_REVIEW'
+ AND COALESCE((content#>>'{commercial,pricingComplete}')::boolean,false)=true
+ AND jsonb_array_length(COALESCE(content#>'{commercial,items}','[]'::jsonb))>0
+ RETURNING *`;
+ const proposal:any=rows[0];
+ if(!proposal)throw new Error("Proposal is not eligible for approval. Confirm the exact version is in internal review with completed commercial pricing.");
+ await sql`INSERT INTO wgos.audit_events(actor_subject,action,entity_type,entity_id,metadata)
+ VALUES(${input.actor},'PROPOSAL_VERSION_APPROVED','PROPOSAL',${proposal.id}::text,jsonb_build_object('version',${proposal.version},'status','APPROVED_TO_SEND'))`;
+ return proposal;
+}
