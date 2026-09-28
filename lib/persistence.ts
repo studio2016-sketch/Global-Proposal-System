@@ -123,21 +123,81 @@ export async function approvePersistentProposal(input:{proposalId:string;version
  return proposal;
 }
 
-export async function publishApprovedProposal(input:{proposalId:string;tokenHash:string;actor:string}){
+export async function getApprovedProposalDeliveryContext(proposalId:string){
  const sql=db();
- const rows=await sql`UPDATE wgos.proposals SET status='SENT',public_token_hash=${input.tokenHash},sent_at=now(),updated_at=now()
- WHERE id=${input.proposalId}::uuid AND status='APPROVED_TO_SEND' AND approved_at IS NOT NULL AND approved_by_subject IS NOT NULL
- RETURNING *`;
- const proposal:any=rows[0];if(!proposal)throw new Error("Only an approved proposal can be published.");
+ const rows=await sql`SELECT p.id,p.version,p.brand_id,p.status,p.one_time_total,p.monthly_total,p.deposit_amount,
+  o.title AS opportunity_title,o.contact_name,o.contact_email,org.name AS organization_name
+ FROM wgos.proposals p
+ LEFT JOIN wgos.opportunities o ON o.id=p.opportunity_id
+ LEFT JOIN wgos.organizations org ON org.id=p.organization_id
+ WHERE p.id=${proposalId}::uuid
+   AND p.status='APPROVED_TO_SEND'
+   AND p.approved_at IS NOT NULL
+   AND p.approved_by_subject IS NOT NULL
+ LIMIT 1`;
+ return rows[0]??null;
+}
+
+export async function prepareProposalAccessToken(input:{proposalId:string;expectedVersion:number;tokenHash:string;actor:string}){
+ const sql=db();
+ const rows=await sql`WITH eligible AS (
+  SELECT id,version FROM wgos.proposals
+  WHERE id=${input.proposalId}::uuid
+    AND version=${input.expectedVersion}
+    AND status='APPROVED_TO_SEND'
+    AND approved_at IS NOT NULL
+    AND approved_by_subject IS NOT NULL
+ ), tok AS (
+  INSERT INTO wgos.proposal_access_tokens(proposal_id,proposal_version,token_hash)
+  SELECT id,version,${input.tokenHash} FROM eligible
+  RETURNING proposal_id,proposal_version,token_hash
+ )
+ UPDATE wgos.proposals p
+ SET public_token_hash=${input.tokenHash},updated_at=now()
+ FROM tok
+ WHERE p.id=tok.proposal_id AND p.version=tok.proposal_version
+ RETURNING p.*`;
+ const proposal:any=rows[0];if(!proposal)throw new Error("Only the exact approved proposal version can be prepared for delivery.");
  await sql`INSERT INTO wgos.audit_events(actor_subject,action,entity_type,entity_id,metadata)
- VALUES(${input.actor},'PROPOSAL_PUBLISHED','PROPOSAL',${proposal.id}::text,jsonb_build_object('version',${proposal.version},'status','SENT'))`;
+ VALUES(${input.actor},'PROPOSAL_ACCESS_PREPARED','PROPOSAL',${proposal.id}::text,
+  jsonb_build_object('version',${proposal.version},'tokenHashPrefix',left(${input.tokenHash},12)))`;
  return proposal;
 }
+
+export async function markProposalDelivered(input:{proposalId:string;expectedVersion:number;provider:string;externalId:string;actor:string}){
+ const sql=db();
+ const rows=await sql`UPDATE wgos.proposals p
+ SET status='SENT',sent_at=now(),updated_at=now()
+ WHERE p.id=${input.proposalId}::uuid
+   AND p.version=${input.expectedVersion}
+   AND p.status='APPROVED_TO_SEND'
+   AND EXISTS(
+    SELECT 1 FROM wgos.proposal_access_tokens t
+    WHERE t.proposal_id=p.id AND t.proposal_version=p.version AND t.revoked_at IS NULL
+   )
+ RETURNING *`;
+ const proposal:any=rows[0];if(!proposal)throw new Error("Proposal delivery could not be finalized.");
+ await sql`INSERT INTO wgos.integration_links(entity_type,entity_id,provider,external_id,metadata)
+ VALUES('PROPOSAL',${proposal.id},${input.provider},${input.externalId},
+  jsonb_build_object('version',${proposal.version},'channel','email'))
+ ON CONFLICT(provider,external_id) DO NOTHING`;
+ await sql`INSERT INTO wgos.audit_events(actor_subject,action,entity_type,entity_id,metadata)
+ VALUES(${input.actor},'PROPOSAL_DELIVERED','PROPOSAL',${proposal.id}::text,
+  jsonb_build_object('version',${proposal.version},'status','SENT','provider',${input.provider},'externalId',${input.externalId}))`;
+ return proposal;
+}
+
 export async function getClientProposalByTokenHash(tokenHash:string){
  const sql=db();
  const rows=await sql`SELECT p.*,o.title AS opportunity_title,o.discovery,o.recommendation,o.contact_name,o.contact_email,org.name AS organization_name
- FROM wgos.proposals p LEFT JOIN wgos.opportunities o ON o.id=p.opportunity_id LEFT JOIN wgos.organizations org ON org.id=p.organization_id
- WHERE p.public_token_hash=${tokenHash} AND p.status IN ('SENT','VIEWED','CONFIGURED','CLIENT_APPROVED','SIGNATURE_PENDING','SIGNED','PAYMENT_PENDING','PAID','ACTIVATED') LIMIT 1`;
+ FROM wgos.proposal_access_tokens t
+ JOIN wgos.proposals p ON p.id=t.proposal_id AND p.version=t.proposal_version
+ LEFT JOIN wgos.opportunities o ON o.id=p.opportunity_id
+ LEFT JOIN wgos.organizations org ON org.id=p.organization_id
+ WHERE t.token_hash=${tokenHash}
+   AND t.revoked_at IS NULL
+   AND p.status IN ('SENT','VIEWED','CONFIGURED','CLIENT_APPROVED','SIGNATURE_PENDING','SIGNED','PAYMENT_PENDING','PAID','ACTIVATED')
+ LIMIT 1`;
  return rows[0]??null;
 }
 
