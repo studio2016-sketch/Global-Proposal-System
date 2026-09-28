@@ -1,4 +1,5 @@
-import type {BrandKey,Proposal,ProposalStatus} from "./domain";
+import type {Proposal} from "./domain";
+import type {BrandKey,ProposalStatus} from "./engine";
 
 export type AttentionKind="DECISION"|"APPROVAL"|"EXCEPTION"|"OPPORTUNITY";
 export type AttentionPriority="CRITICAL"|"HIGH"|"NORMAL";
