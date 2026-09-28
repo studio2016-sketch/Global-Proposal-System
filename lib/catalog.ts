@@ -9,6 +9,13 @@ export const catalog:CatalogRule[]=[
 {id:"jw-performance",brand:"jermaine",label:"Performance Experience",description:"Curated Jermaine Williams live performance configuration.",kind:"one_time",pricing:"owner_quote",tags:["Private Event","Concert","Featured Artist"]},
 {id:"jw-md",brand:"jermaine",label:"Musical Direction",description:"Musical direction, preparation and performance leadership.",kind:"one_time",pricing:"owner_quote",tags:["Musical Direction"]},
 {id:"jw-production",brand:"jermaine",label:"Music Production",description:"Bespoke music production engagement.",kind:"one_time",pricing:"owner_quote",tags:["Music Production"]}
+,{id:"cg-feature",brand:"charmin",label:"Featured Artist Experience",description:"Curated Charmin Greene featured performance.",kind:"one_time",pricing:"owner_quote",tags:["Private Event","Concert","Featured Artist"]}
+,{id:"cg-arranging",brand:"charmin",label:"Horn Arranging",description:"Custom horn arranging and musical preparation.",kind:"one_time",pricing:"owner_quote",tags:["Musical Direction","Music Production"]}
+,{id:"cj-live",brand:"charminJermaine",label:"Charmin & Jermaine Live Experience",description:"Curated duo, band or orchestral performance experience.",kind:"one_time",pricing:"owner_quote",tags:["Private Event","Concert","Featured Artist"]}
+,{id:"bo-standard",brand:"bassOne",label:"Bass One Instrument",description:"Masterfully crafted Bass One instrument.",kind:"one_time",pricing:"owner_quote",tags:["Standard Instrument"]}
+,{id:"bo-custom",brand:"bassOne",label:"Custom Instrument Commission",description:"Player-specific custom instrument design and build.",kind:"one_time",pricing:"owner_quote",tags:["Custom Instrument","Bespoke Commission"]}
+,{id:"cgs-consulting",brand:"cgSuccess",label:"Strategic Consulting Engagement",description:"Executive consulting and strategic advisory engagement.",kind:"one_time",pricing:"owner_quote",tags:["Consulting","Strategy","Executive Engagement"]}
+,{id:"cgs-org",brand:"cgSuccess",label:"Organizational Development Engagement",description:"Organizational systems and development engagement.",kind:"one_time",pricing:"owner_quote",tags:["Organizational Development"]}
 ];
 export function catalogFor(brand:BrandKey,projectType?:string){return catalog.filter(x=>x.brand===brand&&(!projectType||x.tags.includes(projectType)))}
 export function instantiate(rule:CatalogRule,approvedUnitAmount:number):CommercialItem{if(rule.pricing!=="fixed"&&approvedUnitAmount<=0)throw new Error("Owner-approved price required.");return {id:rule.id,name:rule.label,description:rule.description,kind:rule.kind,unitPrice:{currency:"USD",unitAmount:rule.unitAmount??approvedUnitAmount},quantity:1,selected:true};}
