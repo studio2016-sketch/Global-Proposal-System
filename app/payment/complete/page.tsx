@@ -1,0 +1,1 @@
+export default function PaymentComplete(){return <main className="client"><section className="clientHero"><p className="eyebrow">PAYMENT RECEIVED</p><h1>Thank you.</h1><p>Your payment is being verified directly with the payment provider. WGOS will activate the project only after that server-side verification is complete.</p></section></main>}
