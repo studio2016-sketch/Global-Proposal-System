@@ -1,0 +1,3 @@
+import type {Proposal} from "./domain";import {assertCanSend} from "./guards";
+export type DeliveryPayload={proposalId:string;version:number;clientEmail:string;publicToken:string;subject:string};
+export function prepareDelivery(p:Proposal):DeliveryPayload{assertCanSend(p);if(!p.client.email)throw new Error("Client email required.");if(!p.publicToken)throw new Error("Secure public token required.");return {proposalId:p.id,version:p.version,clientEmail:p.client.email,publicToken:p.publicToken,subject:p.title};}
