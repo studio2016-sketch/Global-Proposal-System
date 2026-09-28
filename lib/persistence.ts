@@ -174,3 +174,16 @@ export async function createAgreementFromAcceptedSnapshot(input:{snapshotId:stri
  await sql`INSERT INTO wgos.audit_events(action,entity_type,entity_id,metadata) VALUES('AGREEMENT_MANIFEST_CREATED','AGREEMENT',${agreement.id}::text,jsonb_build_object('proposalId',${x.proposal_id}::text,'proposalVersion',${x.proposal_version},'snapshotHash',${x.content_hash},'agreementHash',${agreementHash},'termsVersion',${input.termsVersion}))`;
  return agreement;
 }
+
+export async function getAgreementForSignature(id:string){
+ const sql=db();const rows=await sql`SELECT a.*,s.client_email,s.snapshot,p.brand_id,o.contact_name,o.contact_email,org.name AS organization_name
+ FROM wgos.agreements a JOIN wgos.accepted_snapshots s ON s.id=a.snapshot_id JOIN wgos.proposals p ON p.id=a.proposal_id LEFT JOIN wgos.opportunities o ON o.id=p.opportunity_id LEFT JOIN wgos.organizations org ON org.id=p.organization_id
+ WHERE a.id=${id}::uuid AND a.status='READY_FOR_SIGNATURE' AND a.snapshot_hash=s.content_hash AND a.proposal_version=s.proposal_version LIMIT 1`;return rows[0]??null;
+}
+export async function recordSignatureEnvelope(input:{agreementId:string;provider:string;externalId:string;url?:string}){
+ const sql=db();const meta=JSON.stringify({embeddedSigningUrl:input.url||null});
+ const rows=await sql`UPDATE wgos.agreements SET status='SIGNATURE_PENDING',provider=${input.provider},provider_external_id=${input.externalId},updated_at=now() WHERE id=${input.agreementId}::uuid AND status='READY_FOR_SIGNATURE' RETURNING *`;
+ const a:any=rows[0];if(!a)throw new Error("Agreement is not ready for signature.");
+ await sql`INSERT INTO wgos.integration_links(entity_type,entity_id,provider,external_id,metadata) VALUES('AGREEMENT',${a.id},${input.provider},${input.externalId},${meta}::jsonb) ON CONFLICT(provider,external_id) DO NOTHING`;
+ await sql`INSERT INTO wgos.audit_events(action,entity_type,entity_id,metadata) VALUES('SIGNATURE_ENVELOPE_CREATED','AGREEMENT',${a.id}::text,jsonb_build_object('provider',${input.provider},'externalId',${input.externalId}))`;return a;
+}
