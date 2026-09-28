@@ -7,7 +7,7 @@ export async function POST(_req:Request,{params}:{params:Promise<{id:string}>}){
  if(!auth.ok)return NextResponse.json({approved:false,error:auth.error},{status:auth.status});
  try{
   const {id}=await params;
-  const terms:any=await approveAgreementTerms({termsId:id,actor:String((auth.identity as any).auth_user_id)});
+  const terms:any=await approveAgreementTerms({id,actor:String((auth.identity as any).auth_user_id)});
   return NextResponse.json({approved:true,terms});
  }catch(e){
   return NextResponse.json({approved:false,error:e instanceof Error?e.message:"Unable to approve terms"},{status:409});
