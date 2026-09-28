@@ -1,2 +1,1 @@
-import Link from "next/link";
-export default function Closing(){return <main className="admin"><header className="adminHead"><div><p className="eyebrow">SALES & CLOSING</p><h1>Active Decisions</h1><p>Engagement, signature, payment and activation actions will populate from durable proposal events.</p></div><Link href="/admin">← Proposal Command</Link></header><section className="emptyState"><p className="eyebrow">DURABLE EVENTS REQUIRED</p><h2>Sales automation is staged, not simulated.</h2><p>The next-best-action engine is implemented. This production view will activate when the database-backed event stream is connected, so client activity is never represented by temporary server memory.</p></section></main>}
+export default function Page(){return null}
