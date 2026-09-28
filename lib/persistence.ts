@@ -204,7 +204,7 @@ export async function getClientProposalByTokenHash(tokenHash:string){
 export async function acceptClientConfiguration(input:{tokenHash:string;proposalId:string;proposalVersion:number;selectedIds:string[];contentHash:string;snapshot:any;clientEmail?:string;oneTime:number;monthly:number;deposit:number}){
  const sql=db();const snapshotJson=JSON.stringify(input.snapshot);
  const rows=await sql`WITH eligible AS (
-  SELECT id FROM wgos.proposals WHERE id=${input.proposalId}::uuid AND version=${input.proposalVersion} AND public_token_hash=${input.tokenHash} AND status IN ('SENT','VIEWED','CONFIGURED')
+  SELECT p.id FROM wgos.proposals p WHERE p.id=${input.proposalId}::uuid AND p.version=${input.proposalVersion} AND p.status IN ('SENT','VIEWED','CONFIGURED') AND EXISTS (SELECT 1 FROM wgos.proposal_access_tokens t WHERE t.proposal_id=p.id AND t.proposal_version=p.version AND t.token_hash=${input.tokenHash} AND t.revoked_at IS NULL)
  ), ins AS (
   INSERT INTO wgos.accepted_snapshots(proposal_id,proposal_version,content_hash,client_email,one_time_total,monthly_total,deposit_amount,snapshot)
   SELECT id,${input.proposalVersion},${input.contentHash},${input.clientEmail??null},${input.oneTime},${input.monthly},${input.deposit},${snapshotJson}::jsonb FROM eligible
@@ -219,29 +219,56 @@ export async function acceptClientConfiguration(input:{tokenHash:string;proposal
  return accepted;
 }
 
-export async function createAgreementFromAcceptedSnapshot(input:{snapshotId:string;termsVersion:string;tokenHash:string}){
- if(!input.termsVersion.trim())throw new Error("Agreement terms version required.");
+export async function createAgreementFromAcceptedSnapshot(input:{snapshotId:string;tokenHash:string}){
  const sql=db();
  const source=await sql`SELECT s.*,p.brand_id,p.status AS proposal_status,o.title AS opportunity_title,o.contact_name,o.contact_email,org.name AS organization_name
- FROM wgos.accepted_snapshots s JOIN wgos.proposals p ON p.id=s.proposal_id LEFT JOIN wgos.opportunities o ON o.id=p.opportunity_id LEFT JOIN wgos.organizations org ON org.id=p.organization_id
- WHERE s.id=${input.snapshotId}::uuid AND p.version=s.proposal_version AND p.status='CLIENT_APPROVED' AND p.public_token_hash=${input.tokenHash} LIMIT 1`;
+ FROM wgos.accepted_snapshots s
+ JOIN wgos.proposals p ON p.id=s.proposal_id
+ LEFT JOIN wgos.opportunities o ON o.id=p.opportunity_id
+ LEFT JOIN wgos.organizations org ON org.id=p.organization_id
+ WHERE s.id=${input.snapshotId}::uuid
+   AND p.version=s.proposal_version
+   AND p.status='CLIENT_APPROVED'
+   AND EXISTS(
+    SELECT 1 FROM wgos.proposal_access_tokens t
+    WHERE t.proposal_id=p.id
+      AND t.proposal_version=p.version
+      AND t.token_hash=${input.tokenHash}
+      AND t.revoked_at IS NULL
+   )
+ LIMIT 1`;
  const x:any=source[0];if(!x)throw new Error("Accepted snapshot is not eligible for agreement creation.");
+
+ const termsRows=await sql`SELECT id,brand_id,terms_version,title,body,approved_by_subject,approved_at
+ FROM wgos.agreement_terms
+ WHERE brand_id=${x.brand_id}
+   AND status='APPROVED'
+   AND approved_at IS NOT NULL
+ ORDER BY approved_at DESC,updated_at DESC
+ LIMIT 1`;
+ const terms:any=termsRows[0];
+ if(!terms)throw new Error("No approved agreement terms are configured for this brand.");
+
  const title=(x.opportunity_title||"Bespoke Engagement")+" Agreement";
- const core={proposalId:x.proposal_id,proposalVersion:x.proposal_version,snapshotHash:x.content_hash,brand:x.brand_id,title,clientName:x.organization_name||x.contact_name||"Client",clientEmail:x.client_email||x.contact_email||"",oneTime:Number(x.one_time_total),monthly:Number(x.monthly_total),deposit:Number(x.deposit_amount),termsVersion:input.termsVersion,status:"READY_FOR_SIGNATURE",snapshot:x.snapshot};
- const {hashCommercialRecord}=await import("./acceptance");const agreementHash=hashCommercialRecord(core);
- const rows=await sql`INSERT INTO wgos.agreements(proposal_id,snapshot_id,snapshot_hash,proposal_version,terms_version,content_hash,title,status)
- VALUES(${x.proposal_id},${x.id},${x.content_hash},${x.proposal_version},${input.termsVersion},${agreementHash},${title},'READY_FOR_SIGNATURE')
+ const {hashCommercialRecord}=await import("./acceptance");
+ const termsContentHash=hashCommercialRecord({termsId:terms.id,termsVersion:terms.terms_version,body:terms.body});
+ const core={proposalId:x.proposal_id,proposalVersion:x.proposal_version,snapshotHash:x.content_hash,brand:x.brand_id,title,clientName:x.organization_name||x.contact_name||"Client",clientEmail:x.client_email||x.contact_email||"",oneTime:Number(x.one_time_total),monthly:Number(x.monthly_total),deposit:Number(x.deposit_amount),termsId:terms.id,termsVersion:terms.terms_version,termsContentHash,status:"READY_FOR_SIGNATURE",snapshot:x.snapshot};
+ const agreementHash=hashCommercialRecord(core);
+ const rows=await sql`INSERT INTO wgos.agreements(proposal_id,snapshot_id,snapshot_hash,proposal_version,terms_id,terms_version,content_hash,title,status)
+ VALUES(${x.proposal_id},${x.id},${x.content_hash},${x.proposal_version},${terms.id},${terms.terms_version},${agreementHash},${title},'READY_FOR_SIGNATURE')
  ON CONFLICT(content_hash) DO UPDATE SET updated_at=now() RETURNING *`;
  const agreement:any=rows[0];
  await sql`UPDATE wgos.proposals SET status='SIGNATURE_PENDING',updated_at=now() WHERE id=${x.proposal_id}`;
- await sql`INSERT INTO wgos.audit_events(action,entity_type,entity_id,metadata) VALUES('AGREEMENT_MANIFEST_CREATED','AGREEMENT',${agreement.id}::text,jsonb_build_object('proposalId',${x.proposal_id}::text,'proposalVersion',${x.proposal_version},'snapshotHash',${x.content_hash},'agreementHash',${agreementHash},'termsVersion',${input.termsVersion}))`;
+ await sql`INSERT INTO wgos.audit_events(action,entity_type,entity_id,metadata)
+ VALUES('AGREEMENT_MANIFEST_CREATED','AGREEMENT',${agreement.id}::text,
+  jsonb_build_object('proposalId',${x.proposal_id}::text,'proposalVersion',${x.proposal_version},'snapshotHash',${x.content_hash},'agreementHash',${agreementHash},'termsId',${terms.id}::text,'termsVersion',${terms.terms_version},'termsContentHash',${termsContentHash}))`;
  return agreement;
 }
 
 export async function getAgreementForSignature(id:string,tokenHash:string){
  const sql=db();const rows=await sql`SELECT a.*,s.client_email,s.snapshot,p.brand_id,o.contact_name,o.contact_email,org.name AS organization_name
  FROM wgos.agreements a JOIN wgos.accepted_snapshots s ON s.id=a.snapshot_id JOIN wgos.proposals p ON p.id=a.proposal_id LEFT JOIN wgos.opportunities o ON o.id=p.opportunity_id LEFT JOIN wgos.organizations org ON org.id=p.organization_id
- WHERE a.id=${id}::uuid AND a.status='READY_FOR_SIGNATURE' AND a.snapshot_hash=s.content_hash AND a.proposal_version=s.proposal_version AND p.public_token_hash=${tokenHash} LIMIT 1`;return rows[0]??null;
+ WHERE a.id=${id}::uuid AND a.status='READY_FOR_SIGNATURE' AND a.snapshot_hash=s.content_hash AND a.proposal_version=s.proposal_version AND EXISTS (SELECT 1 FROM wgos.proposal_access_tokens t WHERE t.proposal_id=p.id AND t.proposal_version=p.version AND t.token_hash=${tokenHash} AND t.revoked_at IS NULL) LIMIT 1`;return rows[0]??null;
 }
 export async function recordSignatureEnvelope(input:{agreementId:string;provider:string;externalId:string;url?:string}){
  const sql=db();const meta=JSON.stringify({embeddedSigningUrl:input.url||null});
@@ -290,7 +317,7 @@ export async function prepareDepositPayment(input:{proposalId:string;tokenHash:s
   FROM wgos.proposals p
   JOIN wgos.agreements a ON a.proposal_id=p.id AND a.status='SIGNED'
   JOIN wgos.accepted_snapshots s ON s.id=a.snapshot_id AND s.proposal_id=p.id AND s.proposal_version=p.version
-  WHERE p.id=${input.proposalId}::uuid AND p.public_token_hash=${input.tokenHash} AND p.status='SIGNED' AND s.deposit_amount>0
+  WHERE p.id=${input.proposalId}::uuid AND p.status='SIGNED' AND s.deposit_amount>0 AND EXISTS (SELECT 1 FROM wgos.proposal_access_tokens t WHERE t.proposal_id=p.id AND t.proposal_version=p.version AND t.token_hash=${input.tokenHash} AND t.revoked_at IS NULL)
   ORDER BY a.signed_at DESC NULLS LAST LIMIT 1
  ), ins AS (
   INSERT INTO wgos.payments(proposal_id,snapshot_id,kind,amount,currency,status)
@@ -321,12 +348,12 @@ export async function recordPaymentProviderRequest(input:{paymentId:string;provi
 
 export async function getPaymentCheckoutContext(input:{paymentId:string;tokenHash:string}){
  const sql=db();
- const rows=await sql`SELECT pay.*,s.client_email,p.public_token_hash
+ const rows=await sql`SELECT pay.*,s.client_email
  FROM wgos.payments pay
  JOIN wgos.accepted_snapshots s ON s.id=pay.snapshot_id
  JOIN wgos.proposals p ON p.id=pay.proposal_id
  WHERE pay.id=${input.paymentId}::uuid
- AND p.public_token_hash=${input.tokenHash}
+ AND EXISTS (SELECT 1 FROM wgos.proposal_access_tokens t WHERE t.proposal_id=p.id AND t.proposal_version=p.version AND t.token_hash=${input.tokenHash} AND t.revoked_at IS NULL)
  AND pay.status IN ('READY_FOR_PROVIDER','PAYMENT_PENDING')
  LIMIT 1`;
  return rows[0]??null;
@@ -380,7 +407,7 @@ export async function getClientClosingStatus(input:{proposalId:string;tokenHash:
   (SELECT a.status FROM wgos.agreements a WHERE a.proposal_id=p.id ORDER BY a.created_at DESC LIMIT 1) AS agreement_status,
   (SELECT pay.status FROM wgos.payments pay WHERE pay.proposal_id=p.id ORDER BY pay.created_at DESC LIMIT 1) AS payment_status
  FROM wgos.proposals p
- WHERE p.id=${input.proposalId}::uuid AND p.public_token_hash=${input.tokenHash}
+ WHERE p.id=${input.proposalId}::uuid AND EXISTS (SELECT 1 FROM wgos.proposal_access_tokens t WHERE t.proposal_id=p.id AND t.proposal_version=p.version AND t.token_hash=${input.tokenHash} AND t.revoked_at IS NULL)
  LIMIT 1`;
  return rows[0]??null;
 }
