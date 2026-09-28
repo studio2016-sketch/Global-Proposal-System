@@ -596,3 +596,70 @@ export async function processResendEmailEvent(input:{
  if(prior[0])return {processed:true,duplicate:true};
  throw new Error("No WGOS proposal matches this Resend email event.");
 }
+
+export async function listAgreementTerms(){
+ const sql=db();
+ return sql`SELECT t.id,t.brand_id,t.terms_version,t.title,t.body,t.status,t.approved_by_subject,t.approved_at,t.created_at,t.updated_at,b.name AS brand_name
+ FROM wgos.agreement_terms t
+ JOIN wgos.brands b ON b.id=t.brand_id
+ ORDER BY b.name,t.created_at DESC`;
+}
+
+export async function createAgreementTermsDraft(input:{brandId:string;termsVersion:string;title:string;body:string;actor:string}){
+ const brandId=input.brandId.trim();
+ const version=input.termsVersion.trim();
+ const title=input.title.trim();
+ const body=input.body.trim();
+ if(!brandId||!version||!title||!body)throw new Error("Brand, terms version, title, and legal text are required.");
+ const sql=db();
+ const rows=await sql`INSERT INTO wgos.agreement_terms(brand_id,terms_version,title,body,status)
+ VALUES(${brandId},${version},${title},${body},'DRAFT')
+ RETURNING *`;
+ const terms:any=rows[0];
+ await sql`INSERT INTO wgos.audit_events(actor_subject,action,entity_type,entity_id,metadata)
+ VALUES(${input.actor},'AGREEMENT_TERMS_DRAFT_CREATED','AGREEMENT_TERMS',${terms.id}::text,
+ jsonb_build_object('brand',${brandId},'termsVersion',${version}))`;
+ return terms;
+}
+
+export async function updateAgreementTermsDraft(input:{id:string;title:string;body:string;actor:string}){
+ const title=input.title.trim();
+ const body=input.body.trim();
+ if(!title||!body)throw new Error("Title and legal text are required.");
+ const sql=db();
+ const rows=await sql`UPDATE wgos.agreement_terms
+ SET title=${title},body=${body},updated_at=now()
+ WHERE id=${input.id}::uuid AND status='DRAFT'
+ RETURNING *`;
+ const terms:any=rows[0];if(!terms)throw new Error("Only draft agreement terms can be edited.");
+ await sql`INSERT INTO wgos.audit_events(actor_subject,action,entity_type,entity_id,metadata)
+ VALUES(${input.actor},'AGREEMENT_TERMS_DRAFT_UPDATED','AGREEMENT_TERMS',${terms.id}::text,
+ jsonb_build_object('brand',${terms.brand_id},'termsVersion',${terms.terms_version}))`;
+ return terms;
+}
+
+export async function approveAgreementTerms(input:{id:string;actor:string}){
+ const sql=db();
+ const rows=await sql`WITH target AS (
+  SELECT id,brand_id,terms_version FROM wgos.agreement_terms
+  WHERE id=${input.id}::uuid AND status='DRAFT'
+ ), retired AS (
+  UPDATE wgos.agreement_terms t
+  SET status='RETIRED',updated_at=now()
+  FROM target x
+  WHERE t.brand_id=x.brand_id AND t.status='APPROVED'
+  RETURNING t.id
+ ), approved AS (
+  UPDATE wgos.agreement_terms t
+  SET status='APPROVED',approved_by_subject=${input.actor},approved_at=now(),updated_at=now()
+  FROM target x
+  WHERE t.id=x.id
+  RETURNING t.*
+ )
+ SELECT * FROM approved`;
+ const terms:any=rows[0];if(!terms)throw new Error("Only draft agreement terms can be approved.");
+ await sql`INSERT INTO wgos.audit_events(actor_subject,action,entity_type,entity_id,metadata)
+ VALUES(${input.actor},'AGREEMENT_TERMS_APPROVED','AGREEMENT_TERMS',${terms.id}::text,
+ jsonb_build_object('brand',${terms.brand_id},'termsVersion',${terms.terms_version}))`;
+ return terms;
+}
