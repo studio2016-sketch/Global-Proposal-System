@@ -522,3 +522,77 @@ export async function updateAgreementTermsDraft(input:{termsId:string;title:stri
   jsonb_build_object('brand',${terms.brand_id},'termsVersion',${terms.terms_version}))`;
  return terms;
 }
+
+export async function markClientProposalViewed(input:{proposalId:string;proposalVersion:number;tokenHash:string}){
+ const sql=db();
+ const rows=await sql`UPDATE wgos.proposals p
+ SET status=CASE WHEN p.status='SENT' THEN 'VIEWED' ELSE p.status END,updated_at=now()
+ WHERE p.id=${input.proposalId}::uuid
+   AND p.version=${input.proposalVersion}
+   AND p.status IN ('SENT','VIEWED','CONFIGURED','CLIENT_APPROVED','SIGNATURE_PENDING','SIGNED','PAYMENT_PENDING','PAID','ACTIVATED')
+   AND EXISTS(
+    SELECT 1 FROM wgos.proposal_access_tokens t
+    WHERE t.proposal_id=p.id AND t.proposal_version=p.version
+      AND t.token_hash=${input.tokenHash} AND t.revoked_at IS NULL
+   )
+ RETURNING p.id,p.status,p.version`;
+ const proposal:any=rows[0];
+ if(!proposal)throw new Error("Private proposal access is invalid.");
+ if(proposal.status==='VIEWED'){
+  await sql`INSERT INTO wgos.audit_events(action,entity_type,entity_id,metadata)
+   SELECT 'CLIENT_PROPOSAL_VIEWED','PROPOSAL',${proposal.id}::text,jsonb_build_object('version',${proposal.version})
+   WHERE NOT EXISTS(
+    SELECT 1 FROM wgos.audit_events
+    WHERE entity_type='PROPOSAL' AND entity_id=${proposal.id}::text
+      AND action='CLIENT_PROPOSAL_VIEWED' AND metadata->>'version'=${String(proposal.version)}
+   )`;
+ }
+ return proposal;
+}
+
+export async function processResendEmailEvent(input:{
+ externalEventId:string;
+ eventType:string;
+ emailId:string;
+ payloadHash:string;
+ occurredAt?:string|null;
+}){
+ const sql=db();
+ const rows=await sql`WITH ev AS (
+  INSERT INTO wgos.provider_events(provider,external_event_id,event_type,payload_hash,processed_at)
+  VALUES('resend',${input.externalEventId},${input.eventType},${input.payloadHash},now())
+  ON CONFLICT(provider,external_event_id) DO NOTHING
+  RETURNING id
+ ), link AS (
+  SELECT l.id,l.entity_id
+  FROM wgos.integration_links l,ev
+  WHERE l.provider='resend' AND l.external_id=${input.emailId} AND l.entity_type='PROPOSAL'
+  LIMIT 1
+ ), updated_link AS (
+  UPDATE wgos.integration_links l
+  SET metadata=COALESCE(l.metadata,'{}'::jsonb) || jsonb_build_object(
+    'lastEvent',${input.eventType},
+    'lastEventAt',COALESCE(${input.occurredAt},now()::text)
+  )
+  FROM link x WHERE l.id=x.id
+  RETURNING l.entity_id
+ )
+ SELECT entity_id FROM updated_link`;
+
+ if(rows[0]){
+  const proposalId=String((rows[0] as any).entity_id);
+  const action=
+   input.eventType==='email.delivered'?'PROPOSAL_EMAIL_DELIVERED':
+   input.eventType==='email.opened'?'PROPOSAL_EMAIL_OPENED':
+   input.eventType==='email.clicked'?'PROPOSAL_EMAIL_CLICKED':
+   ['email.bounced','email.complained','email.failed','email.suppressed'].includes(input.eventType)?'PROPOSAL_EMAIL_EXCEPTION':
+   'PROPOSAL_EMAIL_EVENT';
+  await sql`INSERT INTO wgos.audit_events(action,entity_type,entity_id,metadata)
+   VALUES(${action},'PROPOSAL',${proposalId},
+    jsonb_build_object('provider','resend','eventType',${input.eventType},'emailId',${input.emailId},'externalEventId',${input.externalEventId}))`;
+  return {processed:true,duplicate:false,proposalId};
+ }
+ const prior=await sql`SELECT id FROM wgos.provider_events WHERE provider='resend' AND external_event_id=${input.externalEventId} LIMIT 1`;
+ if(prior[0])return {processed:true,duplicate:true};
+ throw new Error("No WGOS proposal matches this Resend email event.");
+}
