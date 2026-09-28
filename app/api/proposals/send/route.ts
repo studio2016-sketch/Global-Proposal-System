@@ -1,3 +1,11 @@
 import {requireAdmin} from "../../../../lib/authz";
-import {NextResponse} from "next/server";import {demoProposal} from "../../../../lib/demo";import {prepareDelivery} from "../../../../lib/send-gate";import {persistenceConfigured} from "../../../../lib/storage-contract";
-export async function POST(req:Request){await requireAdmin();try{const body=await req.json();if(body.proposalId!==demoProposal.id)return NextResponse.json({error:"Proposal not found"},{status:404});const delivery=prepareDelivery(demoProposal);if(!persistenceConfigured())return NextResponse.json({sent:false,reason:"PERSISTENCE_NOT_CONFIGURED",deliveryPreview:{proposalId:delivery.proposalId,version:delivery.version,clientEmail:delivery.clientEmail}},{status:503});return NextResponse.json({sent:false,reason:"DELIVERY_PROVIDER_PENDING"},{status:503});}catch(e){return NextResponse.json({error:e instanceof Error?e.message:"Send blocked"},{status:400});}}
+import {NextResponse} from "next/server";
+import {generatePublicToken,hashPublicToken} from "../../../../lib/tokens";
+import {publishApprovedProposal} from "../../../../lib/persistence";
+export async function POST(req:Request){
+ const identity:any=await requireAdmin();
+ try{const body=await req.json();if(!body.proposalId)return NextResponse.json({sent:false,error:"proposalId required"},{status:400});
+ const token=generatePublicToken();const proposal:any=await publishApprovedProposal({proposalId:body.proposalId,tokenHash:hashPublicToken(token),actor:String(identity.auth_user_id)});
+ return NextResponse.json({sent:true,published:true,deliveryProvider:"PENDING",proposalId:proposal.id,version:proposal.version,status:proposal.status,clientPath:"/p/"+token,sentAt:proposal.sent_at});}
+ catch(e){return NextResponse.json({sent:false,error:e instanceof Error?e.message:"Send blocked"},{status:409});}
+}
