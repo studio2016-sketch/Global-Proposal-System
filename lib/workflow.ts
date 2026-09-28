@@ -1,0 +1,4 @@
+import type {Proposal} from "./domain";import type {ProposalStatus} from "./engine";import {transitions} from "./engine";
+export function transition(p:Proposal,next:ProposalStatus):Proposal{if(!transitions[p.status].includes(next))throw new Error(`Invalid transition: ${p.status} → ${next}`);return {...p,status:next,updatedAt:new Date().toISOString()}}
+export function approveVersion(p:Proposal,approvedBy:string):Proposal{if(p.status!=="INTERNAL_REVIEW")throw new Error("Only proposals in internal review can be owner-approved.");return {...p,status:"APPROVED_TO_SEND",ownerApproval:{approvedAt:new Date().toISOString(),approvedBy,version:p.version},updatedAt:new Date().toISOString()}}
+export function reviseCommercialTerms(p:Proposal):Proposal{return {...p,status:"DRAFT",version:p.version+1,ownerApproval:undefined,updatedAt:new Date().toISOString()}}
