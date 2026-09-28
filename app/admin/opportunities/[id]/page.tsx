@@ -1,6 +1,7 @@
 import Link from "next/link";
 import {requireAdmin} from "../../../../lib/authz";
 import {db} from "../../../../lib/db";
+import DraftButton from "./DraftButton";
 
 export default async function OpportunityReview({params}:{params:Promise<{id:string}>}){
  await requireAdmin();
@@ -13,5 +14,5 @@ export default async function OpportunityReview({params}:{params:Promise<{id:str
  <section className="stats"><div><small>PIPELINE</small><b>{o.stage}</b></div><div><small>FIT</small><b>{r.fit||"REVIEW"}</b></div><div><small>PRICING</small><b>OWNER</b></div></section>
  <section className="adminPanel"><p className="eyebrow">WGOS RECOMMENDATION</p><h2>{r.headline||"Owner review required"}</h2><p>{Array.isArray(r.recommended)?r.recommended.join(" · "):"No recommendation generated."}</p>{Array.isArray(r.options)&&r.options.length>0&&<><p className="eyebrow spaced">OPTIONS</p><p>{r.options.join(" · ")}</p></>}{Array.isArray(r.notes)&&r.notes.length>0&&<><p className="eyebrow spaced">COMMERCIAL NOTES</p>{r.notes.map((n:string)=><p key={n}>{n}</p>)}</>}</section>
  <section className="adminPanel"><p className="eyebrow">CLIENT DISCOVERY</p>{Object.entries(d).map(([k,v])=><div className="proposalRow" key={k}><strong>{k.replaceAll("_"," ")}</strong><span>{String(v)}</span></div>)}</section>
- <section className="principle"><p className="eyebrow">OWNER AUTHORITY</p><h2>Recommendation is not a quote.</h2><p>WGOS may prepare scope and options from discovery. Final pricing, commercial terms and authorization to send remain owner decisions.</p></section></main>
+ <section className="adminPanel"><p className="eyebrow">NEXT COMMERCIAL ACTION</p>{o.proposal_id?<Link className="primary linkButton" href={"/admin/proposals/"+o.proposal_id}>Open Proposal Draft →</Link>:<DraftButton id={o.id}/>}</section><section className="principle"><p className="eyebrow">OWNER AUTHORITY</p><h2>Recommendation is not a quote.</h2><p>WGOS may prepare scope and options from discovery. Final pricing, commercial terms and authorization to send remain owner decisions.</p></section></main>
 }
