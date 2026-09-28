@@ -1,0 +1,1 @@
+export default function NotFound(){return <main><section className="hero"><p className="eyebrow">PRIVATE EXPERIENCE</p><h1>This proposal is unavailable.</h1><p className="lede">The link may be invalid, expired, or awaiting authorization.</p></section></main>}
