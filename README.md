@@ -18,3 +18,7 @@ Studio2016 is the first deep discovery schema. Jermaine Williams is the second b
 
 ## Next infrastructure
 Persistent Postgres data model, admin authentication, AI structured generation, private tokenized proposal routes, audit/event log, e-signature adapter, payment adapter, CRM adapter and brand-site rewrites.
+
+
+## Production baseline
+Main is maintained as the verified deployable foundation. Advanced lifecycle modules are reintegrated only after each layer passes production build validation.
