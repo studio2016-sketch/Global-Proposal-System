@@ -1,0 +1,3 @@
+import type {Opportunity} from "./opportunity";import type {Proposal} from "./domain";
+export interface CommercialRepository{createOpportunity(o:Opportunity):Promise<Opportunity>;listOpportunities():Promise<Opportunity[]>;getOpportunity(id:string):Promise<Opportunity|null>;saveProposal(p:Proposal):Promise<Proposal>;getProposal(id:string):Promise<Proposal|null>;getProposalByPublicTokenHash(hash:string):Promise<Proposal|null>;appendEvent(input:{proposalId?:string;opportunityId?:string;type:string;payload?:Record<string,unknown>}):Promise<void>}
+export const persistenceConfigured=()=>Boolean(process.env.DATABASE_URL);
