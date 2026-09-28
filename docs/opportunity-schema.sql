@@ -1,0 +1,3 @@
+create table opportunities (id text primary key, brand_id text not null references brands(id), status text not null, organization text not null, contact_name text, email text, answers jsonb not null default '{}', recommendation jsonb not null default '{}', source text not null, proposal_id uuid references proposals(id), created_at timestamptz not null default now(), updated_at timestamptz not null default now());
+alter table events add column if not exists opportunity_id text references opportunities(id);
+create index opportunities_status_time on opportunities(status,created_at desc);
