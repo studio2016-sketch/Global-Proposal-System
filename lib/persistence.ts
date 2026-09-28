@@ -46,17 +46,33 @@ export async function commandCenterSnapshot(){
 
 export async function createProposalDraftFromOpportunity(opportunityId:string){
  const sql=db();
- return sql.transaction(async(tx:any)=>{
-  const rows=await tx`SELECT * FROM wgos.opportunities WHERE id=${opportunityId}::uuid FOR UPDATE`;
-  const o:any=rows[0]; if(!o)throw new Error("Opportunity not found");
-  if(o.proposal_id){
-   const existing=await tx`SELECT * FROM wgos.proposals WHERE id=${o.proposal_id} LIMIT 1`; return existing[0];
-  }
-  const content={source:"WGOS_DISCOVERY",discovery:o.discovery,recommendation:o.recommendation,commercial:{pricingAuthority:"OWNER",items:[],pricingComplete:false},client:{contactName:o.contact_name,contactEmail:o.contact_email},opportunity:{id:o.id,title:o.title}};
-  const proposals=await tx`INSERT INTO wgos.proposals(opportunity_id,brand_id,organization_id,status,content) VALUES(${o.id},${o.brand_id},${o.organization_id},'DRAFT',${JSON.stringify(content)}::jsonb) RETURNING *`;
-  const proposal:any=proposals[0];
-  await tx`UPDATE wgos.opportunities SET proposal_id=${proposal.id},stage='PROPOSAL',updated_at=now() WHERE id=${o.id}`;
-  await tx`INSERT INTO wgos.audit_events(action,entity_type,entity_id,metadata) VALUES('PROPOSAL_DRAFT_CREATED','PROPOSAL',${proposal.id}::text,${JSON.stringify({opportunityId:o.id,brand:o.brand_id,pricingAuthority:"OWNER"})}::jsonb)`;
-  return proposal;
- });
+ const rows=await sql`
+  WITH source AS (
+   SELECT * FROM wgos.opportunities WHERE id=${opportunityId}::uuid
+  ), inserted AS (
+   INSERT INTO wgos.proposals(opportunity_id,brand_id,organization_id,status,content)
+   SELECT s.id,s.brand_id,s.organization_id,'DRAFT',
+    jsonb_build_object(
+     'source','WGOS_DISCOVERY',
+     'discovery',s.discovery,
+     'recommendation',s.recommendation,
+     'commercial',jsonb_build_object('pricingAuthority','OWNER','items',jsonb_build_array(),'pricingComplete',false),
+     'client',jsonb_build_object('contactName',s.contact_name,'contactEmail',s.contact_email),
+     'opportunity',jsonb_build_object('id',s.id,'title',s.title)
+    )
+   FROM source s WHERE s.proposal_id IS NULL
+   RETURNING *
+  ), linked AS (
+   UPDATE wgos.opportunities o SET proposal_id=i.id,stage='PROPOSAL',updated_at=now()
+   FROM inserted i WHERE o.id=i.opportunity_id RETURNING i.*
+  )
+  SELECT * FROM linked
+  UNION ALL
+  SELECT p.* FROM wgos.proposals p JOIN source s ON p.id=s.proposal_id
+  LIMIT 1`;
+ const proposal:any=rows[0]; if(!proposal)throw new Error("Opportunity not found or proposal could not be created");
+ await sql`INSERT INTO wgos.audit_events(action,entity_type,entity_id,metadata)
+  VALUES('PROPOSAL_DRAFT_CREATED','PROPOSAL',${proposal.id}::text,
+   jsonb_build_object('opportunityId',${opportunityId}::text,'brand',${proposal.brand_id}::text,'pricingAuthority','OWNER'))`;
+ return proposal;
 }
