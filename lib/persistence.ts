@@ -156,12 +156,12 @@ export async function acceptClientConfiguration(input:{tokenHash:string;proposal
  return accepted;
 }
 
-export async function createAgreementFromAcceptedSnapshot(input:{snapshotId:string;termsVersion:string}){
+export async function createAgreementFromAcceptedSnapshot(input:{snapshotId:string;termsVersion:string;tokenHash:string}){
  if(!input.termsVersion.trim())throw new Error("Agreement terms version required.");
  const sql=db();
  const source=await sql`SELECT s.*,p.brand_id,p.status AS proposal_status,o.title AS opportunity_title,o.contact_name,o.contact_email,org.name AS organization_name
  FROM wgos.accepted_snapshots s JOIN wgos.proposals p ON p.id=s.proposal_id LEFT JOIN wgos.opportunities o ON o.id=p.opportunity_id LEFT JOIN wgos.organizations org ON org.id=p.organization_id
- WHERE s.id=${input.snapshotId}::uuid AND p.version=s.proposal_version AND p.status='CLIENT_APPROVED' LIMIT 1`;
+ WHERE s.id=${input.snapshotId}::uuid AND p.version=s.proposal_version AND p.status='CLIENT_APPROVED' AND p.public_token_hash=${input.tokenHash} LIMIT 1`;
  const x:any=source[0];if(!x)throw new Error("Accepted snapshot is not eligible for agreement creation.");
  const title=(x.opportunity_title||"Bespoke Engagement")+" Agreement";
  const core={proposalId:x.proposal_id,proposalVersion:x.proposal_version,snapshotHash:x.content_hash,brand:x.brand_id,title,clientName:x.organization_name||x.contact_name||"Client",clientEmail:x.client_email||x.contact_email||"",oneTime:Number(x.one_time_total),monthly:Number(x.monthly_total),deposit:Number(x.deposit_amount),termsVersion:input.termsVersion,status:"READY_FOR_SIGNATURE",snapshot:x.snapshot};
@@ -175,10 +175,10 @@ export async function createAgreementFromAcceptedSnapshot(input:{snapshotId:stri
  return agreement;
 }
 
-export async function getAgreementForSignature(id:string){
+export async function getAgreementForSignature(id:string,tokenHash:string){
  const sql=db();const rows=await sql`SELECT a.*,s.client_email,s.snapshot,p.brand_id,o.contact_name,o.contact_email,org.name AS organization_name
  FROM wgos.agreements a JOIN wgos.accepted_snapshots s ON s.id=a.snapshot_id JOIN wgos.proposals p ON p.id=a.proposal_id LEFT JOIN wgos.opportunities o ON o.id=p.opportunity_id LEFT JOIN wgos.organizations org ON org.id=p.organization_id
- WHERE a.id=${id}::uuid AND a.status='READY_FOR_SIGNATURE' AND a.snapshot_hash=s.content_hash AND a.proposal_version=s.proposal_version LIMIT 1`;return rows[0]??null;
+ WHERE a.id=${id}::uuid AND a.status='READY_FOR_SIGNATURE' AND a.snapshot_hash=s.content_hash AND a.proposal_version=s.proposal_version AND p.public_token_hash=${tokenHash} LIMIT 1`;return rows[0]??null;
 }
 export async function recordSignatureEnvelope(input:{agreementId:string;provider:string;externalId:string;url?:string}){
  const sql=db();const meta=JSON.stringify({embeddedSigningUrl:input.url||null});
