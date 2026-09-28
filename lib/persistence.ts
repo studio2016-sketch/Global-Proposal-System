@@ -508,3 +508,17 @@ export async function approveAgreementTerms(input:{termsId:string;actor:string})
   jsonb_build_object('brand',${terms.brand_id},'termsVersion',${terms.terms_version}))`;
  return terms;
 }
+
+export async function updateAgreementTermsDraft(input:{termsId:string;title:string;body:string;actor:string}){
+ if(!input.title.trim()||!input.body.trim())throw new Error("Title and terms body are required.");
+ const sql=db();
+ const rows=await sql`UPDATE wgos.agreement_terms
+ SET title=${input.title.trim()},body=${input.body.trim()},updated_at=now()
+ WHERE id=${input.termsId}::uuid AND status='DRAFT'
+ RETURNING *`;
+ const terms:any=rows[0];if(!terms)throw new Error("Only draft terms can be edited.");
+ await sql`INSERT INTO wgos.audit_events(actor_subject,action,entity_type,entity_id,metadata)
+ VALUES(${input.actor},'AGREEMENT_TERMS_DRAFT_UPDATED','AGREEMENT_TERMS',${terms.id}::text,
+  jsonb_build_object('brand',${terms.brand_id},'termsVersion',${terms.terms_version}))`;
+ return terms;
+}
