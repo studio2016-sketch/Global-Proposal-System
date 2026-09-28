@@ -1,11 +1,11 @@
 "use client";
-import {FormEvent,useState} from "react";
-import {useRouter,useSearchParams} from "next/navigation";
+import {FormEvent,useEffect,useState} from "react";
+import {useRouter} from "next/navigation";
 
 export default function ResetPassword(){
  const router=useRouter();
- const search=useSearchParams();
- const token=search.get("token")||"";
+ const [token,setToken]=useState("");
+ useEffect(()=>{setToken(new URLSearchParams(window.location.search).get("token")||"")},[]);
  const [password,setPassword]=useState("");
  const [confirm,setConfirm]=useState("");
  const [busy,setBusy]=useState(false);
