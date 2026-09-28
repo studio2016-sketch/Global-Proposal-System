@@ -1,0 +1,1 @@
+export default function PaymentCancelled(){return <main className="client"><section className="clientHero"><p className="eyebrow">PAYMENT NOT COMPLETED</p><h1>No changes were made.</h1><p>Your signed agreement remains intact. Return to your private proposal link whenever you are ready to complete the deposit.</p></section></main>}
