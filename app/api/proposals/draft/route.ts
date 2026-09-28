@@ -1,0 +1,2 @@
+import {NextResponse} from "next/server";
+export async function POST(request:Request){const body=await request.json();if(!body?.brand||!body?.client||!body?.discovery)return NextResponse.json({error:"brand, client and discovery are required"},{status:400});return NextResponse.json({status:"DRAFT",sendAllowed:false,requiresOwnerApproval:true,draft:{brand:body.brand,client:body.client,discovery:body.discovery,recommendation:"AI generation adapter pending provider configuration."}});}
