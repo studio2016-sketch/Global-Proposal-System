@@ -155,3 +155,22 @@ export async function acceptClientConfiguration(input:{tokenHash:string;proposal
  await sql`INSERT INTO wgos.audit_events(action,entity_type,entity_id,metadata) VALUES('CLIENT_SCOPE_ACCEPTED','PROPOSAL',${input.proposalId},jsonb_build_object('proposalVersion',${input.proposalVersion},'snapshotId',${accepted.id}::text,'contentHash',${input.contentHash}))`;
  return accepted;
 }
+
+export async function createAgreementFromAcceptedSnapshot(input:{snapshotId:string;termsVersion:string}){
+ if(!input.termsVersion.trim())throw new Error("Agreement terms version required.");
+ const sql=db();
+ const source=await sql`SELECT s.*,p.brand_id,p.status AS proposal_status,o.title AS opportunity_title,o.contact_name,o.contact_email,org.name AS organization_name
+ FROM wgos.accepted_snapshots s JOIN wgos.proposals p ON p.id=s.proposal_id LEFT JOIN wgos.opportunities o ON o.id=p.opportunity_id LEFT JOIN wgos.organizations org ON org.id=p.organization_id
+ WHERE s.id=${input.snapshotId}::uuid AND p.version=s.proposal_version AND p.status='CLIENT_APPROVED' LIMIT 1`;
+ const x:any=source[0];if(!x)throw new Error("Accepted snapshot is not eligible for agreement creation.");
+ const title=(x.opportunity_title||"Bespoke Engagement")+" Agreement";
+ const core={proposalId:x.proposal_id,proposalVersion:x.proposal_version,snapshotHash:x.content_hash,brand:x.brand_id,title,clientName:x.organization_name||x.contact_name||"Client",clientEmail:x.client_email||x.contact_email||"",oneTime:Number(x.one_time_total),monthly:Number(x.monthly_total),deposit:Number(x.deposit_amount),termsVersion:input.termsVersion,status:"READY_FOR_SIGNATURE",snapshot:x.snapshot};
+ const {hashCommercialRecord}=await import("./acceptance");const agreementHash=hashCommercialRecord(core);
+ const rows=await sql`INSERT INTO wgos.agreements(proposal_id,snapshot_id,snapshot_hash,proposal_version,terms_version,content_hash,title,status)
+ VALUES(${x.proposal_id},${x.id},${x.content_hash},${x.proposal_version},${input.termsVersion},${agreementHash},${title},'READY_FOR_SIGNATURE')
+ ON CONFLICT(content_hash) DO UPDATE SET updated_at=now() RETURNING *`;
+ const agreement:any=rows[0];
+ await sql`UPDATE wgos.proposals SET status='SIGNATURE_PENDING',updated_at=now() WHERE id=${x.proposal_id}`;
+ await sql`INSERT INTO wgos.audit_events(action,entity_type,entity_id,metadata) VALUES('AGREEMENT_MANIFEST_CREATED','AGREEMENT',${agreement.id}::text,jsonb_build_object('proposalId',${x.proposal_id}::text,'proposalVersion',${x.proposal_version},'snapshotHash',${x.content_hash},'agreementHash',${agreementHash},'termsVersion',${input.termsVersion}))`;
+ return agreement;
+}
