@@ -113,7 +113,7 @@ export async function approvePersistentProposal(input:{proposalId:string;version
  WHERE id=${input.proposalId}::uuid AND version=${input.version} AND status='INTERNAL_REVIEW'
  AND COALESCE((content#>>'{commercial,pricingComplete}')::boolean,false)=true
  AND jsonb_array_length(COALESCE(content#>'{commercial,items}','[]'::jsonb))>0
- AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(content#>'{commercial,items}','[]'::jsonb)) item WHERE COALESCE((item->>'required')::boolean,false)=true OR COALESCE((item->>'selected')::boolean,false)=true AND COALESCE((item#>>'{unitPrice,unitAmount}')::numeric,0)<=0)
+ AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(content#>'{commercial,items}','[]'::jsonb)) item WHERE (COALESCE((item->>'required')::boolean,false)=true OR COALESCE((item->>'selected')::boolean,false)=true) AND COALESCE((item#>>'{unitPrice,unitAmount}')::numeric,0)<=0)
  RETURNING *`;
  const proposal:any=rows[0];
  if(!proposal)throw new Error("Proposal is not eligible for approval. Confirm the exact version is in internal review with completed commercial pricing.");
