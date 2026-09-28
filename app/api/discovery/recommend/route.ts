@@ -1,0 +1,2 @@
+import {NextResponse} from "next/server";import {recommend} from "../../../../lib/recommend";import {completion} from "../../../../lib/discovery";import type {BrandKey} from "../../../../lib/engine";
+export async function POST(req:Request){const body=await req.json();const brand=body.brand as BrandKey;const answers=body.answers??{};if(!brand)return NextResponse.json({error:"brand required"},{status:400});return NextResponse.json({completion:completion(brand,answers),recommendation:recommend(brand,answers),commercialAuthority:false,sendAllowed:false});}
