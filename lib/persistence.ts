@@ -466,3 +466,45 @@ export async function activatePaidProposal(proposalId:string){
  }
  return {project,templateKey:template.key,taskCount:template.tasks.length,activated:Boolean(activated[0])};
 }
+
+export async function listAgreementTerms(){
+ const sql=db();
+ return sql`SELECT id,brand_id,terms_version,title,body,status,approved_by_subject,approved_at,created_at,updated_at
+ FROM wgos.agreement_terms
+ ORDER BY brand_id,created_at DESC`;
+}
+
+export async function createAgreementTermsDraft(input:{brandId:string;termsVersion:string;title:string;body:string;actor:string}){
+ if(!input.brandId.trim()||!input.termsVersion.trim()||!input.title.trim()||!input.body.trim())throw new Error("Brand, version, title and terms body are required.");
+ const sql=db();
+ const rows=await sql`INSERT INTO wgos.agreement_terms(brand_id,terms_version,title,body,status)
+ VALUES(${input.brandId},${input.termsVersion.trim()},${input.title.trim()},${input.body.trim()},'DRAFT')
+ RETURNING *`;
+ const terms:any=rows[0];
+ await sql`INSERT INTO wgos.audit_events(actor_subject,action,entity_type,entity_id,metadata)
+ VALUES(${input.actor},'AGREEMENT_TERMS_DRAFT_CREATED','AGREEMENT_TERMS',${terms.id}::text,
+  jsonb_build_object('brand',${terms.brand_id},'termsVersion',${terms.terms_version}))`;
+ return terms;
+}
+
+export async function approveAgreementTerms(input:{termsId:string;actor:string}){
+ const sql=db();
+ const rows=await sql`WITH target AS (
+  UPDATE wgos.agreement_terms
+  SET status='APPROVED',approved_by_subject=${input.actor},approved_at=now(),updated_at=now()
+  WHERE id=${input.termsId}::uuid AND status='DRAFT'
+  RETURNING *
+ ), retired AS (
+  UPDATE wgos.agreement_terms t
+  SET status='RETIRED',updated_at=now()
+  FROM target x
+  WHERE t.brand_id=x.brand_id AND t.id<>x.id AND t.status='APPROVED'
+  RETURNING t.id
+ )
+ SELECT * FROM target`;
+ const terms:any=rows[0];if(!terms)throw new Error("Only a draft terms version can be approved.");
+ await sql`INSERT INTO wgos.audit_events(actor_subject,action,entity_type,entity_id,metadata)
+ VALUES(${input.actor},'AGREEMENT_TERMS_APPROVED','AGREEMENT_TERMS',${terms.id}::text,
+  jsonb_build_object('brand',${terms.brand_id},'termsVersion',${terms.terms_version}))`;
+ return terms;
+}
