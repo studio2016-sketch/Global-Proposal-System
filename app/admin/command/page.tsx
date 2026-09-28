@@ -1,8 +1,10 @@
+import {requireAdmin} from "../../../lib/authz";
 import Link from "next/link";
 import {proposalStore} from "../../../lib/store";
 import {executiveBrief} from "../../../lib/attention";
 
 export default async function CommandCenter(){
+ await requireAdmin();
  const proposals=await proposalStore.list();
  const brief=executiveBrief({proposals});
  const counts={approvals:brief.needsAttention.filter(i=>i.kind==="APPROVAL").length,exceptions:brief.needsAttention.filter(i=>i.kind==="EXCEPTION").length,decisions:brief.needsAttention.filter(i=>i.kind==="DECISION").length,opportunities:brief.needsAttention.filter(i=>i.kind==="OPPORTUNITY").length};
