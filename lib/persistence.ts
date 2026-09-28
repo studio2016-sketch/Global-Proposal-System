@@ -187,3 +187,35 @@ export async function recordSignatureEnvelope(input:{agreementId:string;provider
  await sql`INSERT INTO wgos.integration_links(entity_type,entity_id,provider,external_id,metadata) VALUES('AGREEMENT',${a.id},${input.provider},${input.externalId},${meta}::jsonb) ON CONFLICT(provider,external_id) DO NOTHING`;
  await sql`INSERT INTO wgos.audit_events(action,entity_type,entity_id,metadata) VALUES('SIGNATURE_ENVELOPE_CREATED','AGREEMENT',${a.id}::text,jsonb_build_object('provider',${input.provider},'externalId',${input.externalId}))`;return a;
 }
+
+export async function processVerifiedSignatureCompletion(input:{provider:string;externalEventId:string;externalDocumentId:string;payloadHash:string}){
+ const sql=db();
+ const rows=await sql`WITH ev AS (
+  INSERT INTO wgos.provider_events(provider,external_event_id,event_type,payload_hash,processed_at)
+  VALUES(${input.provider},${input.externalEventId},'document_completed',${input.payloadHash},now())
+  ON CONFLICT(provider,external_event_id) DO NOTHING
+  RETURNING id
+ ), target AS (
+  SELECT a.id AS agreement_id,a.proposal_id
+  FROM wgos.agreements a
+  JOIN wgos.integration_links l ON l.entity_type='AGREEMENT' AND l.entity_id=a.id
+  WHERE l.provider=${input.provider} AND l.external_id=${input.externalDocumentId} AND a.status='SIGNATURE_PENDING'
+  LIMIT 1
+ ), signed AS (
+  UPDATE wgos.agreements a SET status='SIGNED',signed_at=now(),updated_at=now()
+  FROM target t,ev WHERE a.id=t.agreement_id RETURNING a.id,a.proposal_id,a.signed_at
+ ), proposal AS (
+  UPDATE wgos.proposals p SET status='SIGNED',updated_at=now()
+  FROM signed s WHERE p.id=s.proposal_id RETURNING p.id
+ )
+ SELECT * FROM signed`;
+ if(rows[0]){
+  const x:any=rows[0];
+  await sql`INSERT INTO wgos.audit_events(action,entity_type,entity_id,metadata)
+   VALUES('SIGNATURE_COMPLETION_VERIFIED','AGREEMENT',${x.id}::text,jsonb_build_object('provider',${input.provider},'externalDocumentId',${input.externalDocumentId},'eventId',${input.externalEventId}))`;
+  return {processed:true,duplicate:false,agreementId:x.id,proposalId:x.proposal_id,signedAt:x.signed_at};
+ }
+ const prior=await sql`SELECT id FROM wgos.provider_events WHERE provider=${input.provider} AND external_event_id=${input.externalEventId} LIMIT 1`;
+ if(prior[0])return {processed:true,duplicate:true};
+ throw new Error("No pending WGOS agreement matches the verified provider document.");
+}
