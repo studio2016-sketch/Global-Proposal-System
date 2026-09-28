@@ -1,3 +1,13 @@
 import {requireAdmin} from "../../../../lib/authz";
-import {NextResponse} from "next/server";import {demoProposal} from "../../../../lib/demo";import {approveProposal} from "../../../../lib/approval";import {persistenceConfigured} from "../../../../lib/storage-contract";
-export async function POST(req:Request){await requireAdmin();try{const body=await req.json();if(body.proposalId!==demoProposal.id)return NextResponse.json({error:"Proposal not found"},{status:404});const review={...demoProposal,status:"INTERNAL_REVIEW" as const,ownerApproval:undefined};const approved=approveProposal(review,body.approvedBy||"");if(!persistenceConfigured())return NextResponse.json({approved:false,reason:"PERSISTENCE_NOT_CONFIGURED",approvalPreview:{proposalId:approved.id,version:approved.version,status:approved.status}},{status:503});return NextResponse.json({approved:false,reason:"APPROVAL_REPOSITORY_PENDING"},{status:503});}catch(e){return NextResponse.json({error:e instanceof Error?e.message:"Approval failed"},{status:400});}}
+import {NextResponse} from "next/server";
+import {approvePersistentProposal} from "../../../../lib/persistence";
+
+export async function POST(req:Request){
+ const identity:any=await requireAdmin();
+ try{
+  const body=await req.json();
+  if(!body.proposalId||!Number.isInteger(body.version))return NextResponse.json({approved:false,error:"proposalId and exact integer version are required"},{status:400});
+  const proposal:any=await approvePersistentProposal({proposalId:body.proposalId,version:body.version,actor:String(identity.auth_user_id)});
+  return NextResponse.json({approved:true,proposalId:proposal.id,version:proposal.version,status:proposal.status,approvedAt:proposal.approved_at,sendAllowed:true});
+ }catch(e){return NextResponse.json({approved:false,error:e instanceof Error?e.message:"Approval failed"},{status:409});}
+}
