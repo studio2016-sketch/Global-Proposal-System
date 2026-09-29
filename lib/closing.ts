@@ -18,7 +18,7 @@ export function initialClosing(s:AcceptedSnapshot):ClosingState{
 
 export async function requestSignature(p:Proposal,s:AcceptedSnapshot,a:AgreementManifest,provider:SignatureProvider){
   if(p.version!==s.proposalVersion||a.snapshotHash!==s.contentHash||a.proposalVersion!==p.version)throw new Error("Agreement, snapshot and proposal versions do not match.");
-  return provider.createEmbeddedSignature({agreementId:a.agreementId,agreementHash:a.contentHash,proposalId:p.id,snapshotHash:s.contentHash,clientEmail:s.clientEmail,title:a.title});
+  return provider.createEmbeddedSignature({agreementId:a.agreementId,agreementHash:a.contentHash,proposalId:p.id,snapshotHash:s.contentHash,clientName:p.client.organization||s.clientEmail,clientEmail:s.clientEmail,title:a.title});
 }
 
 export async function requestDeposit(s:AcceptedSnapshot,provider:PaymentProvider){
