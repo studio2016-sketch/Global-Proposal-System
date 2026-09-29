@@ -640,9 +640,11 @@ export async function approveAgreementTerms(input:{id:string;actor:string}){
 
 export async function listContractingProfiles(){
  const sql=db();
- return sql`SELECT cp.brand_id,b.name AS brand_name,cp.contracting_name,cp.legal_form,cp.jurisdiction,cp.notice_address,cp.notice_email,cp.default_signer_name,cp.default_signer_title,cp.tax_display_name,cp.complete_for_signing,cp.updated_at
+ return sql`SELECT cp.brand_id,b.name AS brand_name,cp.contracting_name,cp.legal_form,cp.jurisdiction,cp.notice_address,cp.notice_email,cp.default_signer_name,cp.default_signer_title,cp.tax_display_name,cp.complete_for_signing,cp.updated_at,
+  bg.relationship_type,bg.ownership_claimed,bg.planned_legal_form,bg.may_bind_brand,bg.governance_notes
  FROM wgos.contracting_profiles cp
  JOIN wgos.brands b ON b.id=cp.brand_id
+ LEFT JOIN wgos.brand_governance bg ON bg.brand_id=cp.brand_id
  ORDER BY b.name`;
 }
 
@@ -667,6 +669,10 @@ export async function updateContractingProfile(input:{
  if(input.completeForSigning&&legalForm.toLowerCase()!=="individual"&&!signerTitle)
   throw new Error("Signer title/capacity is required for a non-individual contracting party.");
  const sql=db();
+ const governanceRows=await sql`SELECT relationship_type,may_bind_brand FROM wgos.brand_governance WHERE brand_id=${input.brandId} LIMIT 1`;
+ const governance:any=governanceRows[0];
+ if(input.completeForSigning&&governance?.relationship_type==="EXTERNAL_PARTNER"&&governance?.may_bind_brand!==true)
+  throw new Error("This brand is an external partner. Separate written authority is required before WGOS may enable signing.");
  const rows=await sql`UPDATE wgos.contracting_profiles
  SET contracting_name=${input.contractingName.trim()},
      legal_form=${legalForm},
