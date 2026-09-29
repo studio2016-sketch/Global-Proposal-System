@@ -239,6 +239,13 @@ export async function createAgreementFromAcceptedSnapshot(input:{snapshotId:stri
  LIMIT 1`;
  const x:any=source[0];if(!x)throw new Error("Accepted snapshot is not eligible for agreement creation.");
 
+ const profileRows=await sql`SELECT brand_id,contracting_name,legal_form,jurisdiction,notice_address,notice_email,default_signer_name,default_signer_title,tax_display_name,complete_for_signing
+ FROM wgos.contracting_profiles
+ WHERE brand_id=${x.brand_id}
+ LIMIT 1`;
+ const profile:any=profileRows[0];
+ if(!profile||profile.complete_for_signing!==true)throw new Error("The contracting profile for this brand must be legally verified before an agreement can be prepared.");
+
  const termsRows=await sql`SELECT id,brand_id,terms_version,title,body,approved_by_subject,approved_at
  FROM wgos.agreement_terms
  WHERE brand_id=${x.brand_id}
@@ -251,16 +258,28 @@ export async function createAgreementFromAcceptedSnapshot(input:{snapshotId:stri
 
  const title=(x.opportunity_title||"Bespoke Engagement")+" Agreement";
  const {hashCommercialRecord}=await import("./acceptance");
+ const providerIdentity={
+  brandId:profile.brand_id,
+  contractingName:profile.contracting_name,
+  legalForm:profile.legal_form,
+  jurisdiction:profile.jurisdiction,
+  noticeAddress:profile.notice_address,
+  noticeEmail:profile.notice_email,
+  defaultSignerName:profile.default_signer_name,
+  defaultSignerTitle:profile.default_signer_title,
+  taxDisplayName:profile.tax_display_name
+ };
+ const providerIdentityHash=hashCommercialRecord(providerIdentity);
  const termsContentHash=hashCommercialRecord({termsId:terms.id,termsVersion:terms.terms_version,body:terms.body});
- const core={proposalId:x.proposal_id,proposalVersion:x.proposal_version,snapshotHash:x.content_hash,brand:x.brand_id,title,clientName:x.organization_name||x.contact_name||"Client",clientEmail:x.client_email||x.contact_email||"",oneTime:Number(x.one_time_total),monthly:Number(x.monthly_total),deposit:Number(x.deposit_amount),termsId:terms.id,termsVersion:terms.terms_version,termsContentHash,status:"READY_FOR_SIGNATURE",snapshot:x.snapshot};
+ const core={proposalId:x.proposal_id,proposalVersion:x.proposal_version,snapshotHash:x.content_hash,brand:x.brand_id,title,providerIdentity,providerIdentityHash,clientName:x.organization_name||x.contact_name||"Client",clientEmail:x.client_email||x.contact_email||"",oneTime:Number(x.one_time_total),monthly:Number(x.monthly_total),deposit:Number(x.deposit_amount),termsId:terms.id,termsVersion:terms.terms_version,termsContentHash,status:"READY_FOR_SIGNATURE",snapshot:x.snapshot};
  const agreementHash=hashCommercialRecord(core);
- const rows=await sql`INSERT INTO wgos.agreements(proposal_id,snapshot_id,snapshot_hash,proposal_version,terms_id,terms_version,content_hash,title,status)
- VALUES(${x.proposal_id},${x.id},${x.content_hash},${x.proposal_version},${terms.id},${terms.terms_version},${agreementHash},${title},'READY_FOR_SIGNATURE')
+ const rows=await sql`INSERT INTO wgos.agreements(proposal_id,snapshot_id,snapshot_hash,proposal_version,terms_id,terms_version,provider_identity,provider_identity_hash,content_hash,title,status)
+ VALUES(${x.proposal_id},${x.id},${x.content_hash},${x.proposal_version},${terms.id},${terms.terms_version},${JSON.stringify(providerIdentity)}::jsonb,${providerIdentityHash},${agreementHash},${title},'READY_FOR_SIGNATURE')
  ON CONFLICT(content_hash) DO UPDATE SET updated_at=now() RETURNING *`;
  const agreement:any=rows[0];
  await sql`INSERT INTO wgos.audit_events(action,entity_type,entity_id,metadata)
  VALUES('AGREEMENT_MANIFEST_CREATED','AGREEMENT',${agreement.id}::text,
-  jsonb_build_object('proposalId',${x.proposal_id}::text,'proposalVersion',${x.proposal_version},'snapshotHash',${x.content_hash},'agreementHash',${agreementHash},'termsId',${terms.id}::text,'termsVersion',${terms.terms_version},'termsContentHash',${termsContentHash}))`;
+  jsonb_build_object('proposalId',${x.proposal_id}::text,'proposalVersion',${x.proposal_version},'snapshotHash',${x.content_hash},'agreementHash',${agreementHash},'providerIdentityHash',${providerIdentityHash},'providerContractingName',${profile.contracting_name},'termsId',${terms.id}::text,'termsVersion',${terms.terms_version},'termsContentHash',${termsContentHash}))`;
  return agreement;
 }
 
