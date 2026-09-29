@@ -1,3 +1,13 @@
+# SUPERSEDED — WGOS IS THE CANONICAL PLATFORM
+
+**Active development moved to `studio2016-sketch/WGOS` and the WGOS.app product.**
+
+This repository is retained as a migration/reference source for the original Global Proposal System implementation. Do not add new product functionality here. Mature modules are being consolidated into WGOS in controlled, validated slices.
+
+Canonical operating rule: **one control plane, one active application repository, one WGOS operational data model.**
+
+---
+
 # Global Proposal System
 
 A multi-brand commercial operating layer for Williams Global businesses.
