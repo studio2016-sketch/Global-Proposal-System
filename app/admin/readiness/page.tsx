@@ -24,7 +24,7 @@ export default async function Readiness(){
  ];
 
  return <main className="admin">
-  <header className="adminHead"><div><p className="eyebrow">WGOS · OWNER CONTROL</p><h1>Production Readiness</h1><p>Authoritative connection, legal, and signing gates. No credentials are displayed here.</p></div><div style={{display:"flex",gap:10,flexWrap:"wrap"}}><a href="/admin">Commercial Command</a><a href="/admin/terms">Terms Library</a><a href="/admin/contracting-profiles">Contracting Profiles</a><a href="/admin/payment-profiles">Payment Profiles</a></div></header>
+  <header className="adminHead"><div><p className="eyebrow">WGOS · OWNER CONTROL</p><h1>Production Readiness</h1><p>Authoritative connection, legal, and signing gates. No credentials are displayed here.</p></div><div style={{display:"flex",gap:10,flexWrap:"wrap"}}><a href="/admin">Commercial Command</a><a href="/admin/terms">Terms Library</a><a href="/admin/contracting-profiles">Contracting Profiles</a><a href="/admin/payment-profiles">Payment Profiles</a><a href="/admin/delivery-profiles">Delivery Profiles</a></div></header>
 
   <section className="adminPanel">
    <p className="eyebrow">PROVIDERS</p><h2>Infrastructure & Closing</h2>
@@ -42,6 +42,7 @@ export default async function Readiness(){
      const stripeSecretReady=b.secret_env_var?stripeProfileConfigured({secretEnvVar:String(b.secret_env_var)}):false;
      const webhookSecretReady=Boolean(b.webhook_secret_env_var&&process.env[String(b.webhook_secret_env_var)]);
      const paymentReady=b.payment_mode==="DIRECT_STRIPE_ACCOUNT"&&b.complete_for_payment===true&&stripeSecretReady&&webhookSecretReady;
+     const deliveryReady=b.delivery_mode==="RESEND"&&b.complete_for_delivery===true&&Boolean(b.from_name)&&Boolean(b.from_email)&&resendConfigured();
      const blockers=[
       !b.legal_form?"legal form":null,
       !b.jurisdiction?"jurisdiction":null,
@@ -58,6 +59,13 @@ export default async function Readiness(){
       !stripeSecretReady?"brand Stripe secret in Vercel":null,
       !webhookSecretReady?"brand Stripe webhook secret in Vercel":null
      ].filter(Boolean);
+     const deliveryBlockers=[
+      b.delivery_mode!=="RESEND"?"Resend delivery mode":null,
+      !b.complete_for_delivery?"delivery profile approval":null,
+      !b.from_name?"sender name":null,
+      !b.from_email?"sender email":null,
+      !resendConfigured()?"Resend API/base URL configuration":null
+     ].filter(Boolean);
      return <div key={b.brand_id} style={{padding:16,border:"1px solid rgba(255,255,255,.14)",borderRadius:14}}>
       <div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center"}}>
        <div><strong>{b.brand_name}</strong><p className="muted">{b.contracting_name||"Contracting identity incomplete"} · {b.legal_form||"Legal form pending"}{b.planned_legal_form?" → planned "+b.planned_legal_form:""}</p></div>
@@ -65,6 +73,8 @@ export default async function Readiness(){
       </div>
       <p className="privateNote">Policy: {b.signing_policy||"not set"} · Verified signers: {Number(b.verified_signers)} · Approved terms: {Number(b.approved_terms)} · Draft terms: {Number(b.draft_terms)}</p>
       {!ready&&<p className="muted">Legal remaining: {blockers.join(", ")||"legal review"}</p>}
+      <p className="privateNote">Delivery: {b.delivery_mode||"DISABLED"} · {deliveryReady?"READY":"BLOCKED"}{b.from_email?" · "+b.from_email:""}</p>
+      {!deliveryReady&&<p className="muted">Delivery remaining: {deliveryBlockers.join(", ")||"delivery configuration"}</p>}
       <p className="privateNote">Payment: {b.payment_mode||"DISABLED"} · {paymentReady?"READY":"BLOCKED"} · Webhook: /api/webhooks/stripe/{b.brand_id}</p>
       {!paymentReady&&<p className="muted">Payment remaining: {paymentBlockers.join(", ")||"payment configuration"}</p>}
      </div>;
