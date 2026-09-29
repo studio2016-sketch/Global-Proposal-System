@@ -126,10 +126,14 @@ export async function approvePersistentProposal(input:{proposalId:string;version
 export async function getApprovedProposalDeliveryContext(proposalId:string){
  const sql=db();
  const rows=await sql`SELECT p.id,p.version,p.brand_id,p.status,p.one_time_total,p.monthly_total,p.deposit_amount,
-  o.title AS opportunity_title,o.contact_name,o.contact_email,org.name AS organization_name
+  o.title AS opportunity_title,o.contact_name,o.contact_email,org.name AS organization_name,
+  dp.delivery_mode,dp.from_name,dp.from_email,dp.reply_to_email,dp.complete_for_delivery,
+  bg.relationship_type,bg.may_bind_brand
  FROM wgos.proposals p
  LEFT JOIN wgos.opportunities o ON o.id=p.opportunity_id
  LEFT JOIN wgos.organizations org ON org.id=p.organization_id
+ LEFT JOIN wgos.brand_delivery_profiles dp ON dp.brand_id=p.brand_id
+ LEFT JOIN wgos.brand_governance bg ON bg.brand_id=p.brand_id
  WHERE p.id=${proposalId}::uuid
    AND p.status='APPROVED_TO_SEND'
    AND p.approved_at IS NOT NULL
@@ -921,4 +925,56 @@ export async function getPendingPaymentVerificationContext(paymentId:string){
    AND pay.provider='stripe'
  LIMIT 1`;
  return rows[0]??null;
+}
+
+export async function listBrandDeliveryProfiles(){
+ const sql=db();
+ return sql`SELECT p.*,b.name AS brand_name,bg.relationship_type,bg.ownership_claimed,bg.may_bind_brand
+ FROM wgos.brand_delivery_profiles p
+ JOIN wgos.brands b ON b.id=p.brand_id
+ LEFT JOIN wgos.brand_governance bg ON bg.brand_id=p.brand_id
+ ORDER BY b.name`;
+}
+
+export async function updateBrandDeliveryProfile(input:{
+ brandId:string;
+ deliveryMode:"RESEND"|"EXTERNAL"|"DISABLED";
+ fromName?:string;
+ fromEmail?:string;
+ replyToEmail?:string;
+ completeForDelivery:boolean;
+ actor:string;
+}){
+ const fromName=(input.fromName||"").trim();
+ const fromEmail=(input.fromEmail||"").trim().toLowerCase();
+ const replyTo=(input.replyToEmail||"").trim().toLowerCase();
+ const email=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+ if(input.deliveryMode==="RESEND"){
+  if(!fromName)throw new Error("Sender name is required for Resend delivery.");
+  if(!email.test(fromEmail))throw new Error("A valid sender email is required for Resend delivery.");
+  if(replyTo&&!email.test(replyTo))throw new Error("Reply-to email is invalid.");
+ }
+ if(input.completeForDelivery&&input.deliveryMode!=="RESEND")
+  throw new Error("Only a verified Resend profile can currently be enabled for WGOS proposal delivery.");
+
+ const sql=db();
+ const governanceRows=await sql`SELECT relationship_type,may_bind_brand FROM wgos.brand_governance WHERE brand_id=${input.brandId} LIMIT 1`;
+ const governance:any=governanceRows[0];
+ if(input.completeForDelivery&&governance?.relationship_type==="EXTERNAL_PARTNER"&&governance?.may_bind_brand!==true)
+  throw new Error("WGOS cannot enable delivery for an external partner without separate written authority.");
+
+ const rows=await sql`UPDATE wgos.brand_delivery_profiles
+ SET delivery_mode=${input.deliveryMode},
+     from_name=${fromName||null},
+     from_email=${fromEmail||null},
+     reply_to_email=${replyTo||null},
+     complete_for_delivery=${Boolean(input.completeForDelivery)},
+     updated_at=now()
+ WHERE brand_id=${input.brandId}
+ RETURNING *`;
+ const profile:any=rows[0];if(!profile)throw new Error("Delivery profile not found.");
+ await sql`INSERT INTO wgos.audit_events(actor_subject,action,entity_type,entity_id,metadata)
+ VALUES(${input.actor},'BRAND_DELIVERY_PROFILE_UPDATED','BRAND_DELIVERY_PROFILE',${input.brandId},
+ jsonb_build_object('deliveryMode',${profile.delivery_mode},'fromName',${profile.from_name},'fromEmail',${profile.from_email},'replyToEmail',${profile.reply_to_email},'completeForDelivery',${profile.complete_for_delivery}))`;
+ return profile;
 }
