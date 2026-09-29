@@ -1,9 +1,9 @@
 import {NextResponse} from "next/server";
-import {requireApiAdmin} from "../../../../../../lib/authz";
+import {requireApiUser} from "../../../../../../lib/authz";
 import {createBoardTask} from "../../../../../../lib/operations-board";
 
 export async function POST(req:Request,{params}:{params:Promise<{id:string}>}){
- const auth=await requireApiAdmin();
+ const auth=await requireApiUser();
  if(!auth.ok)return NextResponse.json({created:false,error:auth.error},{status:auth.status});
  try{
   const {id}=await params;
