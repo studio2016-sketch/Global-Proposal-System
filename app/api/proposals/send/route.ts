@@ -18,6 +18,12 @@ export async function POST(req:Request){
   const ctx:any=await getApprovedProposalDeliveryContext(body.proposalId);
   if(!ctx)return NextResponse.json({sent:false,error:"Proposal is not approved for delivery"},{status:409});
   if(!ctx.contact_email)return NextResponse.json({sent:false,error:"Client email is required before delivery"},{status:409});
+  if(ctx.relationship_type==="EXTERNAL_PARTNER"&&ctx.may_bind_brand!==true)
+   return NextResponse.json({sent:false,reason:"EXTERNAL_PARTNER_DELIVERY_NOT_AUTHORIZED"},{status:409});
+  if(ctx.delivery_mode!=="RESEND"||ctx.complete_for_delivery!==true)
+   return NextResponse.json({sent:false,reason:"BRAND_DELIVERY_PROFILE_NOT_READY",brandId:ctx.brand_id},{status:503});
+  if(!ctx.from_name||!ctx.from_email)
+   return NextResponse.json({sent:false,reason:"BRAND_SENDER_IDENTITY_MISSING",brandId:ctx.brand_id},{status:503});
 
   const token=generatePublicToken();
   const tokenHash=hashPublicToken(token);
@@ -32,7 +38,10 @@ export async function POST(req:Request){
    clientEmail:ctx.contact_email,
    projectTitle:ctx.opportunity_title,
    privatePath,
-   tokenHash
+   tokenHash,
+   fromName:String(ctx.from_name),
+   fromEmail:String(ctx.from_email),
+   replyToEmail:ctx.reply_to_email?String(ctx.reply_to_email):null
   });
 
   const proposal:any=await markProposalDelivered({
