@@ -239,6 +239,15 @@ export async function createAgreementFromAcceptedSnapshot(input:{snapshotId:stri
  LIMIT 1`;
  const x:any=source[0];if(!x)throw new Error("Accepted snapshot is not eligible for agreement creation.");
 
+ const governanceRows=await sql`SELECT relationship_type,ownership_claimed,planned_legal_form,external_principal_name,may_bind_brand,governance_notes
+ FROM wgos.brand_governance
+ WHERE brand_id=${x.brand_id}
+ LIMIT 1`;
+ const governance:any=governanceRows[0];
+ if(!governance)throw new Error("Brand governance must be configured before agreement creation.");
+ if(governance.relationship_type==="EXTERNAL_PARTNER"&&governance.may_bind_brand!==true)
+  throw new Error("WGOS has no recorded authority to bind this external partner brand. Separate written authorization is required.");
+
  const profileRows=await sql`SELECT brand_id,contracting_name,legal_form,jurisdiction,notice_address,notice_email,default_signer_name,default_signer_title,tax_display_name,complete_for_signing
  FROM wgos.contracting_profiles
  WHERE brand_id=${x.brand_id}
@@ -260,6 +269,8 @@ export async function createAgreementFromAcceptedSnapshot(input:{snapshotId:stri
  const {hashCommercialRecord}=await import("./acceptance");
  const providerIdentity={
   brandId:profile.brand_id,
+  relationshipType:governance.relationship_type,
+  ownershipClaimed:Boolean(governance.ownership_claimed),
   contractingName:profile.contracting_name,
   legalForm:profile.legal_form,
   jurisdiction:profile.jurisdiction,
