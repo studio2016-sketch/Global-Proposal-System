@@ -2,6 +2,7 @@ import Link from "next/link";
 import {getOperationsBoard,getOperationsReferenceData,listOperationsProjects} from "../../../lib/operations-board";
 import NewProjectForm from "./NewProjectForm";
 import OperationsBoardClient from "./OperationsBoardClient";
+import RecurringRules from "./RecurringRules";
 
 export default async function OperationsPage({searchParams}:{searchParams:Promise<{project?:string}>}){
  const query=await searchParams;
@@ -48,7 +49,10 @@ export default async function OperationsPage({searchParams}:{searchParams:Promis
 
    <section style={{minWidth:0}}>
     {!board?<div className="adminPanel"><div className="emptyAttention"><h2>Create a project to begin.</h2><p>WGOS projects can be internal initiatives or automatically activated from paid client work.</p></div></div>:
-     <OperationsBoardClient initialProject={board.project as any} initialTasks={board.tasks as any[]} dependencies={board.dependencies as any[]} users={board.users as any[]} initialComments={board.comments as any[]} initialRecurringRules={board.recurringRules as any[]}/>}
+     <div style={{display:"grid",gap:18}}>
+      <OperationsBoardClient initialProject={board.project as any} initialTasks={board.tasks as any[]} dependencies={board.dependencies as any[]} users={board.users as any[]} initialComments={board.comments as any[]}/>
+      <RecurringRules projectId={String(board.project.id)} users={board.users as any[]} initial={board.recurringRules as any[]}/>
+     </div>}
    </section>
   </div>
  </main>;
