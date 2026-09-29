@@ -89,6 +89,6 @@ export default function PaymentProfilesManager({initial}:{initial:Profile[]}){
 
     <button className="primary" style={{marginTop:14}} disabled={busy===p.brand_id} onClick={()=>save(p)}>{busy===p.brand_id?"Saving…":"Save Payment Profile →"}</button>
    </section>
-  }))}
+  })}
  </div>;
 }
