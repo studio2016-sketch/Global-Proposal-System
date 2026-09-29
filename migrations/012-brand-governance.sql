@@ -25,6 +25,6 @@ SET relationship_type='EXTERNAL_PARTNER',
     ownership_claimed=false,
     planned_legal_form=NULL,
     may_bind_brand=false,
-    governance_notes='Bass One Basses is an external partner brand. Jermaine Williams has a partnership relationship with Bass One Basses. Williams and WGOS are developing website and systems but claim no ownership and no authority to bind Bass One absent separate written authorization.',
+    governance_notes='Bass One Basses is an external partner brand. Jermaine Williams has a partnership relationship with Bass One Basses. WGOS treats that phrase as a business-relationship description only, not as proof of ownership, statutory partnership status, agency, or authority to bind. Williams and WGOS are developing website and systems but claim no ownership. Separate written authorization is required before WGOS may bind Bass One in any agreement.',
     updated_at=now()
 WHERE brand_id='bassOne';
