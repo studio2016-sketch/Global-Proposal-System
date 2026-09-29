@@ -626,3 +626,52 @@ export async function approveAgreementTerms(input:{id:string;actor:string}){
  jsonb_build_object('brand',${terms.brand_id},'termsVersion',${terms.terms_version}))`;
  return terms;
 }
+
+export async function listContractingProfiles(){
+ const sql=db();
+ return sql`SELECT cp.brand_id,b.name AS brand_name,cp.contracting_name,cp.legal_form,cp.jurisdiction,cp.notice_address,cp.notice_email,cp.default_signer_name,cp.default_signer_title,cp.tax_display_name,cp.complete_for_signing,cp.updated_at
+ FROM wgos.contracting_profiles cp
+ JOIN wgos.brands b ON b.id=cp.brand_id
+ ORDER BY b.name`;
+}
+
+export async function updateContractingProfile(input:{
+ brandId:string;
+ contractingName:string;
+ legalForm:string;
+ jurisdiction:string;
+ noticeAddress:string;
+ noticeEmail:string;
+ defaultSignerName:string;
+ defaultSignerTitle?:string;
+ taxDisplayName?:string;
+ completeForSigning:boolean;
+ actor:string;
+}){
+ const legalForm=input.legalForm.trim();
+ const signerTitle=(input.defaultSignerTitle||"").trim();
+ if(!input.contractingName.trim()||!legalForm||!input.jurisdiction.trim()||!input.noticeAddress.trim()||!input.noticeEmail.trim()||!input.defaultSignerName.trim())
+  throw new Error("Contracting name, legal form, jurisdiction, notice address, notice email, and signer name are required.");
+ if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.noticeEmail.trim()))throw new Error("A valid notice email is required.");
+ if(input.completeForSigning&&legalForm.toLowerCase()!=="individual"&&!signerTitle)
+  throw new Error("Signer title/capacity is required for a non-individual contracting party.");
+ const sql=db();
+ const rows=await sql`UPDATE wgos.contracting_profiles
+ SET contracting_name=${input.contractingName.trim()},
+     legal_form=${legalForm},
+     jurisdiction=${input.jurisdiction.trim()},
+     notice_address=${input.noticeAddress.trim()},
+     notice_email=${input.noticeEmail.trim()},
+     default_signer_name=${input.defaultSignerName.trim()},
+     default_signer_title=${signerTitle||null},
+     tax_display_name=${(input.taxDisplayName||"").trim()||null},
+     complete_for_signing=${Boolean(input.completeForSigning)},
+     updated_at=now()
+ WHERE brand_id=${input.brandId}
+ RETURNING *`;
+ const profile:any=rows[0];if(!profile)throw new Error("Contracting profile not found.");
+ await sql`INSERT INTO wgos.audit_events(actor_subject,action,entity_type,entity_id,metadata)
+ VALUES(${input.actor},'CONTRACTING_PROFILE_UPDATED','CONTRACTING_PROFILE',${profile.brand_id},
+  jsonb_build_object('contractingName',${profile.contracting_name},'legalForm',${profile.legal_form},'jurisdiction',${profile.jurisdiction},'completeForSigning',${profile.complete_for_signing}))`;
+ return profile;
+}
