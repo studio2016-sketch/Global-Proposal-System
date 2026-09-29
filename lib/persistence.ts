@@ -802,3 +802,28 @@ export async function getSignatureVerificationContext(input:{provider:string;ext
  LIMIT 1`;
  return rows[0]??null;
 }
+
+export async function getLegalReadiness(){
+ const sql=db();
+ return sql`SELECT
+  b.id AS brand_id,
+  b.name AS brand_name,
+  cp.contracting_name,
+  cp.legal_form,
+  cp.jurisdiction,
+  cp.notice_email,
+  cp.complete_for_signing,
+  cp.signing_policy,
+  bg.relationship_type,
+  bg.ownership_claimed,
+  bg.planned_legal_form,
+  bg.may_bind_brand,
+  COALESCE((SELECT count(*)::int FROM wgos.contracting_signers s WHERE s.brand_id=b.id AND s.authority_status='VERIFIED'),0) AS verified_signers,
+  COALESCE((SELECT count(*)::int FROM wgos.contracting_signers s WHERE s.brand_id=b.id AND s.required_to_sign=true AND s.authority_status<>'VERIFIED'),0) AS unverified_required_signers,
+  COALESCE((SELECT count(*)::int FROM wgos.agreement_terms t WHERE t.brand_id=b.id AND t.status='APPROVED'),0) AS approved_terms,
+  COALESCE((SELECT count(*)::int FROM wgos.agreement_terms t WHERE t.brand_id=b.id AND t.status='DRAFT'),0) AS draft_terms
+ FROM wgos.brands b
+ LEFT JOIN wgos.contracting_profiles cp ON cp.brand_id=b.id
+ LEFT JOIN wgos.brand_governance bg ON bg.brand_id=b.id
+ ORDER BY b.name`;
+}
