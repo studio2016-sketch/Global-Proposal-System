@@ -1,11 +1,12 @@
 import "server-only";
+import {createHmac,timingSafeEqual} from "crypto";
 
 const api="https://api.stripe.com/v1";
 
-function secretFromEnv(envName:string){
- if(!/^[A-Z][A-Z0-9_]{2,127}$/.test(envName))throw new Error("Invalid Stripe credential environment variable.");
+function secretFromEnv(envName:string,label="Stripe credential"){
+ if(!/^[A-Z][A-Z0-9_]{2,127}$/.test(envName))throw new Error("Invalid "+label+" environment variable.");
  const v=process.env[envName];
- if(!v)throw new Error("Stripe credentials are not configured for this contracting brand.");
+ if(!v)throw new Error(label+" is not configured for this contracting brand.");
  return v;
 }
 
@@ -68,4 +69,37 @@ export async function retrieveStripeEvent(eventId:string,secretEnvVar:string){
 
 export async function retrieveCheckoutSession(sessionId:string,secretEnvVar:string){
  return stripeRequest("/checkout/sessions/"+encodeURIComponent(sessionId),secretEnvVar);
+}
+
+
+export function verifyStripeWebhook(input:{
+ rawBody:string;
+ signatureHeader:string;
+ webhookSecretEnvVar:string;
+ toleranceSeconds?:number;
+}){
+ const secret=secretFromEnv(input.webhookSecretEnvVar,"Stripe webhook secret");
+ const parts=input.signatureHeader.split(",").map(x=>x.trim()).filter(Boolean);
+ let timestamp="";
+ const signatures:string[]=[];
+ for(const part of parts){
+  const i=part.indexOf("=");
+  if(i<1)continue;
+  const key=part.slice(0,i);
+  const value=part.slice(i+1);
+  if(key==="t")timestamp=value;
+  if(key==="v1")signatures.push(value);
+ }
+ const ts=Number(timestamp);
+ if(!Number.isFinite(ts)||!signatures.length)return false;
+ const tolerance=input.toleranceSeconds??300;
+ const now=Math.floor(Date.now()/1000);
+ if(Math.abs(now-ts)>tolerance)return false;
+ const expected=createHmac("sha256",secret).update(timestamp+"."+input.rawBody).digest("hex");
+ const expectedBuf=Buffer.from(expected);
+ return signatures.some(sig=>{
+  if(!/^[a-fA-F0-9]{64}$/.test(sig))return false;
+  const actual=Buffer.from(sig.toLowerCase());
+  return actual.length===expectedBuf.length&&timingSafeEqual(actual,expectedBuf);
+ });
 }
