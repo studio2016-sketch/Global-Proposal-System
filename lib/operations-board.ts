@@ -307,8 +307,7 @@ export async function createRecurringTaskRule(input:{
  const cadence=oneOf(input.cadence,["DAILY","WEEKLY","MONTHLY"] as const,"recurrence cadence");
  const priority=oneOf(String(input.priority||"MEDIUM"),taskPriorities,"priority");
  const intervalCount=Math.max(1,Math.floor(Number(input.intervalCount)||1));
- const next=new Date(input.nextRunAt);
- if(Number.isNaN(next.getTime()))throw new Error("A valid next run date/time is required.");
+ if(!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(input.nextRunAt))throw new Error("A valid local next run date/time is required.");
  const timezone=(input.timezone||"America/Chicago").trim()||"America/Chicago";
  const group=(input.groupName||"General").trim()||"General";
  const sql=db();
@@ -323,13 +322,13 @@ export async function createRecurringTaskRule(input:{
   requires_approval,approval_role,enabled
  ) VALUES(
   ${input.projectId},${name},${title},${input.description?.trim()||null},${group},${priority},
-  ${input.assigneeSubject||null},${cadence},${intervalCount},${next.toISOString()},${timezone},
+  ${input.assigneeSubject||null},${cadence},${intervalCount},(${input.nextRunAt}::timestamp AT TIME ZONE ${timezone}),${timezone},
   ${Boolean(input.requiresApproval)},${input.approvalRole||null},true
  ) RETURNING *`;
  const rule:any=rows[0];
  await sql`INSERT INTO wgos.audit_events(actor_subject,action,entity_type,entity_id,metadata)
  VALUES(${input.actor},'RECURRING_TASK_RULE_CREATED','RECURRING_TASK_RULE',${rule.id}::text,
-  jsonb_build_object('projectId',${input.projectId},'cadence',${cadence},'intervalCount',${intervalCount},'nextRunAt',${next.toISOString()}))`;
+  jsonb_build_object('projectId',${input.projectId},'cadence',${cadence},'intervalCount',${intervalCount},'nextRunLocal',${input.nextRunAt},'timezone',${timezone}))`;
  return rule;
 }
 
@@ -343,8 +342,8 @@ export async function updateRecurringTaskRule(input:{
  const cadence=oneOf(input.cadence,["DAILY","WEEKLY","MONTHLY"] as const,"recurrence cadence");
  const priority=oneOf(input.priority,taskPriorities,"priority");
  const intervalCount=Math.max(1,Math.floor(Number(input.intervalCount)||1));
- const next=new Date(input.nextRunAt);
- if(Number.isNaN(next.getTime()))throw new Error("A valid next run date/time is required.");
+ if(!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(input.nextRunAt))throw new Error("A valid local next run date/time is required.");
+ const timezone=input.timezone.trim()||"America/Chicago";
  const sql=db();
  if(input.assigneeSubject){
   const user=await sql`SELECT auth_user_id FROM wgos.app_users WHERE auth_user_id=${input.assigneeSubject} AND active=true LIMIT 1`;
@@ -354,14 +353,14 @@ export async function updateRecurringTaskRule(input:{
   name=${name},title=${title},description=${input.description?.trim()||null},
   group_name=${(input.groupName||"General").trim()||"General"},priority=${priority},
   assignee_subject=${input.assigneeSubject||null},cadence=${cadence},interval_count=${intervalCount},
-  next_run_at=${next.toISOString()},timezone=${input.timezone.trim()||"America/Chicago"},
+  next_run_at=(${input.nextRunAt}::timestamp AT TIME ZONE ${timezone}),timezone=${timezone},
   requires_approval=${Boolean(input.requiresApproval)},approval_role=${input.approvalRole||null},
   enabled=${Boolean(input.enabled)},updated_at=now()
  WHERE id=${input.ruleId}::uuid RETURNING *`;
  const rule:any=rows[0];if(!rule)throw new Error("Recurring rule not found.");
  await sql`INSERT INTO wgos.audit_events(actor_subject,action,entity_type,entity_id,metadata)
  VALUES(${input.actor},'RECURRING_TASK_RULE_UPDATED','RECURRING_TASK_RULE',${rule.id}::text,
-  jsonb_build_object('cadence',${cadence},'enabled',${Boolean(input.enabled)},'nextRunAt',${next.toISOString()}))`;
+  jsonb_build_object('cadence',${cadence},'enabled',${Boolean(input.enabled)},'nextRunLocal',${input.nextRunAt},'timezone',${timezone}))`;
  return rule;
 }
 
