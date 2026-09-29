@@ -24,7 +24,7 @@ export default async function Readiness(){
  ];
 
  return <main className="admin">
-  <header className="adminHead"><div><p className="eyebrow">WGOS · OWNER CONTROL</p><h1>Production Readiness</h1><p>Authoritative connection, legal, and signing gates. No credentials are displayed here.</p></div><div style={{display:"flex",gap:10,flexWrap:"wrap"}}><a href="/admin">Commercial Command</a><a href="/admin/terms">Terms Library</a><a href="/admin/contracting-profiles">Contracting Profiles</a></div></header>
+  <header className="adminHead"><div><p className="eyebrow">WGOS · OWNER CONTROL</p><h1>Production Readiness</h1><p>Authoritative connection, legal, and signing gates. No credentials are displayed here.</p></div><div style={{display:"flex",gap:10,flexWrap:"wrap"}}><a href="/admin">Commercial Command</a><a href="/admin/terms">Terms Library</a><a href="/admin/contracting-profiles">Contracting Profiles</a><a href="/admin/payment-profiles">Payment Profiles</a></div></header>
 
   <section className="adminPanel">
    <p className="eyebrow">PROVIDERS</p><h2>Infrastructure & Closing</h2>
