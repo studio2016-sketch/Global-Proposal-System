@@ -14,7 +14,13 @@ export default function Login(){
   e.preventDefault();setBusy(true);setError("");setMessage("");
   const r=await fetch("/api/auth/sign-in/email",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({email,password,rememberMe:true})});
   let d:any={};try{d=await r.json()}catch{}
-  if(r.ok){router.replace("/admin");router.refresh()}else{setError(d?.message||d?.error||"Unable to sign in.");setBusy(false)}
+  if(r.ok){
+   const me=await fetch("/api/me",{cache:"no-store"});
+   let who:any={};try{who=await me.json()}catch{}
+   const role=String(who?.user?.role||"");
+   router.replace(["OWNER","ADMIN"].includes(role)?"/admin":"/work");
+   router.refresh();
+  }else{setError(d?.message||d?.error||"Unable to sign in.");setBusy(false)}
  }
 
  async function reset(){
@@ -37,6 +43,6 @@ export default function Login(){
   <button type="button" disabled={busy} onClick={reset} style={{marginTop:12}}>Set / Reset Password</button>
   {message&&<p className="muted">{message}</p>}
   {error&&<p className="muted">{error}</p>}
-  <p className="privateNote">Creating an Auth account alone does not grant WGOS access. OWNER/ADMIN authorization is checked separately on every protected administrative request.</p>
+  <p className="privateNote">Creating an Auth account alone does not grant WGOS access. OWNER/ADMIN permissions control executive and administrative areas; active TEAM users are limited to the Work workspace and permitted task actions.</p>
  </section></main>
 }
