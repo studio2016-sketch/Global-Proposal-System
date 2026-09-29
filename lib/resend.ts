@@ -10,29 +10,12 @@ function key(){
  return v;
 }
 
-function envNameForBrand(brand:BrandKey){
- const map:Record<BrandKey,string>={
-  studio2016:"RESEND_FROM_STUDIO2016",
-  jermaine:"RESEND_FROM_JERMAINE",
-  charmin:"RESEND_FROM_CHARMIN",
-  charminJermaine:"RESEND_FROM_CHARMIN_JERMAINE",
-  bassOne:"RESEND_FROM_BASS_ONE",
-  cgSuccess:"RESEND_FROM_CG_SUCCESS",
-  soundLegacy:"RESEND_FROM_SOUND_LEGACY"
- };
- return map[brand];
-}
-
 function escapeHtml(v:string){
  return v.replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[ch]||ch));
 }
 
 export function resendConfigured(){
- return Boolean(process.env.RESEND_API_KEY&&process.env.RESEND_FROM_DEFAULT&&process.env.WGOS_PUBLIC_BASE_URL);
-}
-
-export function senderForBrand(brand:BrandKey){
- return process.env[envNameForBrand(brand)]||process.env.RESEND_FROM_DEFAULT||"";
+ return Boolean(process.env.RESEND_API_KEY&&process.env.WGOS_PUBLIC_BASE_URL);
 }
 
 export async function sendProposalEmail(input:{
@@ -44,10 +27,13 @@ export async function sendProposalEmail(input:{
  projectTitle?:string|null;
  privatePath:string;
  tokenHash:string;
+ fromName:string;
+ fromEmail:string;
+ replyToEmail?:string|null;
 }){
- const from=senderForBrand(input.brand);
  const base=process.env.WGOS_PUBLIC_BASE_URL;
- if(!from||!base)throw new Error("Resend sender or WGOS public base URL is not configured.");
+ if(!base)throw new Error("WGOS_PUBLIC_BASE_URL is not configured.");
+ if(!input.fromName.trim()||!input.fromEmail.trim())throw new Error("Verified brand sender identity is required.");
  const brand=brandConfig[input.brand];
  const clientName=input.clientName?.trim()||"there";
  const title=input.projectTitle?.trim()||brand.proposalLabel;
@@ -62,6 +48,15 @@ export async function sendProposalEmail(input:{
   <p style="font-size:13px;line-height:1.6;color:#8f8b84">Private proposal · Version ${input.version}. Please keep this link confidential.</p>
   <p style="margin-top:32px;font-size:15px;color:#d8d4cb">${escapeHtml(brand.closing)}</p>
  </div></body></html>`;
+ const payload:any={
+   from:`${input.fromName} <${input.fromEmail}>`,
+   to:[input.clientEmail],
+   subject:brand.name+" · Private Proposal",
+   html,
+   tags:[{name:"category",value:"proposal"},{name:"brand",value:input.brand},{name:"proposal_id",value:input.proposalId}]
+ };
+ if(input.replyToEmail)payload.reply_to=[input.replyToEmail];
+
  const r=await fetch(api,{
   method:"POST",
   headers:{
@@ -69,13 +64,7 @@ export async function sendProposalEmail(input:{
    "Content-Type":"application/json",
    "Idempotency-Key":"wgos-proposal-"+input.proposalId+"-v"+input.version+"-"+input.tokenHash.slice(0,16)
   },
-  body:JSON.stringify({
-   from,
-   to:[input.clientEmail],
-   subject:brand.name+" · Private Proposal",
-   html,
-   tags:[{name:"category",value:"proposal"},{name:"brand",value:input.brand},{name:"proposal_id",value:input.proposalId}]
-  })
+  body:JSON.stringify(payload)
  });
  const d:any=await r.json();
  if(!r.ok)throw new Error(d?.message||"Resend proposal delivery failed.");
