@@ -11,7 +11,13 @@ export class SignWellProvider implements SignatureProvider{
   const url=d.recipients?.[0]?.embedded_signing_url;if(!d.id||!url)throw new Error("SignWell did not return an embedded signing URL.");
   return {externalId:d.id,status:d.status||"sent",url};
  }
- async getStatus(externalId:string):Promise<ProviderResult>{const r=await fetch(base+"/documents/"+encodeURIComponent(externalId),{headers:{"X-Api-Key":key(),"Accept":"application/json"}});const d:any=await r.json();if(!r.ok)throw new Error("Unable to read SignWell document.");return {externalId:d.id||externalId,status:d.status||"unknown"}}
+ async getStatus(externalId:string):Promise<ProviderResult>{const d=await this.getDocument(externalId);return {externalId:d.id||externalId,status:d.status||"unknown"}}
+ async getDocument(externalId:string):Promise<any>{
+  const r=await fetch(base+"/documents/"+encodeURIComponent(externalId),{headers:{"X-Api-Key":key(),"Accept":"application/json"},cache:"no-store"});
+  const d:any=await r.json();
+  if(!r.ok)throw new Error("Unable to read SignWell document.");
+  return d;
+ }
  async verifyWebhook(_input:{rawBody:string;signatureHeader:string}):Promise<boolean>{throw new Error("SignWell webhook verification is not enabled until its current verification contract is explicitly configured.");}
 }
 export const signWellConfigured=()=>Boolean(process.env.SIGNWELL_API_KEY&&process.env.SIGNWELL_TEMPLATE_ID);
