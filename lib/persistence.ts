@@ -398,15 +398,89 @@ export async function recordPaymentProviderRequest(input:{paymentId:string;provi
 
 export async function getPaymentCheckoutContext(input:{paymentId:string;tokenHash:string}){
  const sql=db();
- const rows=await sql`SELECT pay.*,s.client_email
+ const rows=await sql`SELECT pay.*,s.client_email,p.brand_id,
+  bpp.payment_mode,bpp.currency AS payment_currency,bpp.stripe_account_id,
+  bpp.secret_env_var,bpp.webhook_secret_env_var,bpp.statement_descriptor,
+  bpp.complete_for_payment
  FROM wgos.payments pay
  JOIN wgos.accepted_snapshots s ON s.id=pay.snapshot_id
  JOIN wgos.proposals p ON p.id=pay.proposal_id
+ LEFT JOIN wgos.brand_payment_profiles bpp ON bpp.brand_id=p.brand_id
  WHERE pay.id=${input.paymentId}::uuid
- AND EXISTS (SELECT 1 FROM wgos.proposal_access_tokens t WHERE t.proposal_id=p.id AND t.proposal_version=p.version AND t.token_hash=${input.tokenHash} AND t.revoked_at IS NULL)
+ AND EXISTS (
+  SELECT 1 FROM wgos.proposal_access_tokens t
+  WHERE t.proposal_id=p.id
+    AND t.proposal_version=p.version
+    AND t.token_hash=${input.tokenHash}
+    AND t.revoked_at IS NULL
+ )
  AND pay.status IN ('READY_FOR_PROVIDER','PAYMENT_PENDING')
  LIMIT 1`;
  return rows[0]??null;
+}
+
+export async function getBrandPaymentProfile(brandId:string){
+ const sql=db();
+ const rows=await sql`SELECT p.*,b.name AS brand_name,bg.relationship_type,bg.ownership_claimed,bg.may_bind_brand
+ FROM wgos.brand_payment_profiles p
+ JOIN wgos.brands b ON b.id=p.brand_id
+ LEFT JOIN wgos.brand_governance bg ON bg.brand_id=p.brand_id
+ WHERE p.brand_id=${brandId}
+ LIMIT 1`;
+ return rows[0]??null;
+}
+
+export async function listBrandPaymentProfiles(){
+ const sql=db();
+ return sql`SELECT p.*,b.name AS brand_name,bg.relationship_type,bg.ownership_claimed,bg.may_bind_brand
+ FROM wgos.brand_payment_profiles p
+ JOIN wgos.brands b ON b.id=p.brand_id
+ LEFT JOIN wgos.brand_governance bg ON bg.brand_id=p.brand_id
+ ORDER BY b.name`;
+}
+
+export async function updateBrandPaymentProfile(input:{
+ brandId:string;
+ paymentMode:"DIRECT_STRIPE_ACCOUNT"|"STRIPE_CONNECT"|"EXTERNAL"|"DISABLED";
+ currency:string;
+ stripeAccountId?:string;
+ secretEnvVar?:string;
+ webhookSecretEnvVar?:string;
+ statementDescriptor?:string;
+ completeForPayment:boolean;
+ actor:string;
+}){
+ const envPattern=/^[A-Z][A-Z0-9_]{2,127}$/;
+ const secretEnv=(input.secretEnvVar||"").trim();
+ const webhookEnv=(input.webhookSecretEnvVar||"").trim();
+ if(input.paymentMode==="DIRECT_STRIPE_ACCOUNT"){
+  if(!secretEnv||!envPattern.test(secretEnv))throw new Error("A valid Stripe secret environment variable name is required.");
+  if(!webhookEnv||!envPattern.test(webhookEnv))throw new Error("A valid Stripe webhook secret environment variable name is required.");
+ }
+ if(input.completeForPayment&&input.paymentMode!=="DIRECT_STRIPE_ACCOUNT")
+  throw new Error("Only a configured direct Stripe account can currently be enabled for WGOS checkout.");
+ const sql=db();
+ const governanceRows=await sql`SELECT relationship_type,may_bind_brand FROM wgos.brand_governance WHERE brand_id=${input.brandId} LIMIT 1`;
+ const governance:any=governanceRows[0];
+ if(input.completeForPayment&&governance?.relationship_type==="EXTERNAL_PARTNER"&&governance?.may_bind_brand!==true)
+  throw new Error("WGOS cannot enable payment routing for an external partner without separate written authority.");
+
+ const rows=await sql`UPDATE wgos.brand_payment_profiles
+ SET payment_mode=${input.paymentMode},
+     currency=${input.currency.trim().toUpperCase()||"USD"},
+     stripe_account_id=${(input.stripeAccountId||"").trim()||null},
+     secret_env_var=${secretEnv||null},
+     webhook_secret_env_var=${webhookEnv||null},
+     statement_descriptor=${(input.statementDescriptor||"").trim()||null},
+     complete_for_payment=${Boolean(input.completeForPayment)},
+     updated_at=now()
+ WHERE brand_id=${input.brandId}
+ RETURNING *`;
+ const profile:any=rows[0];if(!profile)throw new Error("Payment profile not found.");
+ await sql`INSERT INTO wgos.audit_events(actor_subject,action,entity_type,entity_id,metadata)
+ VALUES(${input.actor},'BRAND_PAYMENT_PROFILE_UPDATED','BRAND_PAYMENT_PROFILE',${input.brandId},
+ jsonb_build_object('paymentMode',${profile.payment_mode},'stripeAccountId',${profile.stripe_account_id},'secretEnvVar',${profile.secret_env_var},'webhookSecretEnvVar',${profile.webhook_secret_env_var},'completeForPayment',${profile.complete_for_payment}))`;
+ return profile;
 }
 
 export async function processVerifiedPaymentCompletion(input:{
