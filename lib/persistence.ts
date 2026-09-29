@@ -789,3 +789,16 @@ export async function updateContractingSigner(input:{
  jsonb_build_object('brand',${signer.brand_id},'signerName',${signer.signer_name},'authorityStatus',${signer.authority_status},'requiredToSign',${signer.required_to_sign}))`;
  return signer;
 }
+
+export async function getSignatureVerificationContext(input:{provider:string;externalDocumentId:string}){
+ const sql=db();
+ const rows=await sql`SELECT a.id AS agreement_id,a.content_hash AS agreement_hash,a.proposal_id,a.snapshot_hash,a.status,
+  l.external_id,l.provider
+ FROM wgos.agreements a
+ JOIN wgos.integration_links l ON l.entity_type='AGREEMENT' AND l.entity_id=a.id
+ WHERE l.provider=${input.provider}
+   AND l.external_id=${input.externalDocumentId}
+   AND a.status='SIGNATURE_PENDING'
+ LIMIT 1`;
+ return rows[0]??null;
+}
