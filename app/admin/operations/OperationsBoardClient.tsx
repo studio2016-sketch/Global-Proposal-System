@@ -1,6 +1,7 @@
 "use client";
 import {useMemo,useState} from "react";
 import {useRouter} from "next/navigation";
+import TaskUpdates from "./TaskUpdates";
 
 type User={auth_user_id:string;display_name?:string|null;email?:string|null;role:string};
 type Project={id:string;brand_id:string;brand_name:string;title:string;status:string;start_at?:string|null;end_at?:string|null;owner_subject?:string|null;organization_name?:string|null};
@@ -18,7 +19,7 @@ const priorities=["LOW","MEDIUM","HIGH","CRITICAL"];
 const label=(v:string)=>v.replaceAll("_"," ");
 const dateOnly=(v?:string|null)=>v?String(v).slice(0,10):"";
 
-export default function OperationsBoardClient({initialProject,initialTasks,dependencies,users}:{initialProject:Project;initialTasks:Task[];dependencies:Dependency[];users:User[]}){
+export default function OperationsBoardClient({initialProject,initialTasks,dependencies,users,initialComments}:{initialProject:Project;initialTasks:Task[];dependencies:Dependency[];users:User[];initialComments:any[]}){
  const router=useRouter();
  const [project,setProject]=useState({...initialProject});
  const [tasks,setTasks]=useState(initialTasks.map(t=>({...t,due_at:dateOnly(t.due_at)})));
@@ -179,6 +180,7 @@ export default function OperationsBoardClient({initialProject,initialTasks,depen
          </div>
          <button style={{marginTop:10}} disabled={busy==="deps:"+task.id} onClick={()=>saveDependencies(task)}>{busy==="deps:"+task.id?"Saving…":"Save Dependencies"}</button>
         </div>
+        <TaskUpdates taskId={task.id} initial={initialComments.filter((x:any)=>String(x.task_id)===String(task.id))}/>
        </details>
       </div>)}
      </div>
