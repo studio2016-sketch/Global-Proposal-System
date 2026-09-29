@@ -248,12 +248,24 @@ export async function createAgreementFromAcceptedSnapshot(input:{snapshotId:stri
  if(governance.relationship_type==="EXTERNAL_PARTNER"&&governance.may_bind_brand!==true)
   throw new Error("WGOS has no recorded authority to bind this external partner brand. Separate written authorization is required.");
 
- const profileRows=await sql`SELECT brand_id,contracting_name,legal_form,jurisdiction,notice_address,notice_email,default_signer_name,default_signer_title,tax_display_name,complete_for_signing
+ const profileRows=await sql`SELECT brand_id,contracting_name,legal_form,jurisdiction,notice_address,notice_email,default_signer_name,default_signer_title,tax_display_name,complete_for_signing,signing_policy
  FROM wgos.contracting_profiles
  WHERE brand_id=${x.brand_id}
  LIMIT 1`;
  const profile:any=profileRows[0];
  if(!profile||profile.complete_for_signing!==true)throw new Error("The contracting profile for this brand must be legally verified before an agreement can be prepared.");
+
+ const signerRows:any[]=await sql`SELECT signer_name,signer_title,authority_status,authority_basis,required_to_sign,verified_at
+ FROM wgos.contracting_signers
+ WHERE brand_id=${x.brand_id}
+ ORDER BY created_at`;
+ const verifiedSigners=signerRows.filter(s=>s.authority_status==="VERIFIED");
+ if(!verifiedSigners.length)throw new Error("At least one currently verified signer is required before agreement creation.");
+ if(profile.signing_policy==="ALL_REQUIRED_SIGNERS"){
+  const required=signerRows.filter(s=>s.required_to_sign);
+  if(!required.length||required.some(s=>s.authority_status!=="VERIFIED"))
+   throw new Error("Every required signer must remain verified before agreement creation.");
+ }
 
  const termsRows=await sql`SELECT id,brand_id,terms_version,title,body,approved_by_subject,approved_at
  FROM wgos.agreement_terms
@@ -278,7 +290,15 @@ export async function createAgreementFromAcceptedSnapshot(input:{snapshotId:stri
   noticeEmail:profile.notice_email,
   defaultSignerName:profile.default_signer_name,
   defaultSignerTitle:profile.default_signer_title,
-  taxDisplayName:profile.tax_display_name
+  taxDisplayName:profile.tax_display_name,
+  signingPolicy:profile.signing_policy,
+  verifiedSigners:verifiedSigners.map(s=>({
+   signerName:s.signer_name,
+   signerTitle:s.signer_title,
+   authorityBasis:s.authority_basis,
+   requiredToSign:Boolean(s.required_to_sign),
+   verifiedAt:s.verified_at
+  }))
  };
  const providerIdentityHash=hashCommercialRecord(providerIdentity);
  const termsContentHash=hashCommercialRecord({termsId:terms.id,termsVersion:terms.terms_version,body:terms.body});
@@ -290,7 +310,7 @@ export async function createAgreementFromAcceptedSnapshot(input:{snapshotId:stri
  const agreement:any=rows[0];
  await sql`INSERT INTO wgos.audit_events(action,entity_type,entity_id,metadata)
  VALUES('AGREEMENT_MANIFEST_CREATED','AGREEMENT',${agreement.id}::text,
-  jsonb_build_object('proposalId',${x.proposal_id}::text,'proposalVersion',${x.proposal_version},'snapshotHash',${x.content_hash},'agreementHash',${agreementHash},'providerIdentityHash',${providerIdentityHash},'providerContractingName',${profile.contracting_name},'termsId',${terms.id}::text,'termsVersion',${terms.terms_version},'termsContentHash',${termsContentHash}))`;
+  jsonb_build_object('proposalId',${x.proposal_id}::text,'proposalVersion',${x.proposal_version},'snapshotHash',${x.content_hash},'agreementHash',${agreementHash},'providerIdentityHash',${providerIdentityHash},'providerContractingName',${profile.contracting_name},'signingPolicy',${profile.signing_policy},'verifiedSignerCount',${verifiedSigners.length},'termsId',${terms.id}::text,'termsVersion',${terms.terms_version},'termsContentHash',${termsContentHash}))`;
  return agreement;
 }
 
