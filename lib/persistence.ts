@@ -658,6 +658,7 @@ export async function updateContractingProfile(input:{
  defaultSignerName:string;
  defaultSignerTitle?:string;
  taxDisplayName?:string;
+ signingPolicy:"SOLE_PROPRIETOR"|"SINGLE_AUTHORIZED_SIGNER"|"ANY_AUTHORIZED_SIGNER"|"ALL_REQUIRED_SIGNERS"|"CUSTOM";
  completeForSigning:boolean;
  actor:string;
 }){
@@ -673,6 +674,22 @@ export async function updateContractingProfile(input:{
  const governance:any=governanceRows[0];
  if(input.completeForSigning&&governance?.relationship_type==="EXTERNAL_PARTNER"&&governance?.may_bind_brand!==true)
   throw new Error("This brand is an external partner. Separate written authority is required before WGOS may enable signing.");
+
+ const validPolicies=new Set(["SOLE_PROPRIETOR","SINGLE_AUTHORIZED_SIGNER","ANY_AUTHORIZED_SIGNER","ALL_REQUIRED_SIGNERS","CUSTOM"]);
+ if(!validPolicies.has(input.signingPolicy))throw new Error("Invalid signing policy.");
+
+ if(input.completeForSigning){
+  const signerRows:any[]=await sql`SELECT signer_name,signer_title,authority_status,authority_basis,required_to_sign
+   FROM wgos.contracting_signers WHERE brand_id=${input.brandId}`;
+  const verified=signerRows.filter(s=>s.authority_status==="VERIFIED");
+  if(!verified.length)throw new Error("At least one signer authority record must be verified before signing can be enabled.");
+  if(input.signingPolicy==="ALL_REQUIRED_SIGNERS"){
+   const required=signerRows.filter(s=>s.required_to_sign);
+   if(!required.length)throw new Error("At least one required signer must be identified for an all-required-signers policy.");
+   if(required.some(s=>s.authority_status!=="VERIFIED"))throw new Error("Every required signer must be verified before signing can be enabled.");
+  }
+ }
+
  const rows=await sql`UPDATE wgos.contracting_profiles
  SET contracting_name=${input.contractingName.trim()},
      legal_form=${legalForm},
@@ -682,6 +699,7 @@ export async function updateContractingProfile(input:{
      default_signer_name=${input.defaultSignerName.trim()},
      default_signer_title=${signerTitle||null},
      tax_display_name=${(input.taxDisplayName||"").trim()||null},
+     signing_policy=${input.signingPolicy},
      complete_for_signing=${Boolean(input.completeForSigning)},
      updated_at=now()
  WHERE brand_id=${input.brandId}
@@ -689,7 +707,7 @@ export async function updateContractingProfile(input:{
  const profile:any=rows[0];if(!profile)throw new Error("Contracting profile not found.");
  await sql`INSERT INTO wgos.audit_events(actor_subject,action,entity_type,entity_id,metadata)
  VALUES(${input.actor},'CONTRACTING_PROFILE_UPDATED','CONTRACTING_PROFILE',${profile.brand_id},
-  jsonb_build_object('contractingName',${profile.contracting_name},'legalForm',${profile.legal_form},'jurisdiction',${profile.jurisdiction},'completeForSigning',${profile.complete_for_signing}))`;
+  jsonb_build_object('contractingName',${profile.contracting_name},'legalForm',${profile.legal_form},'jurisdiction',${profile.jurisdiction},'signingPolicy',${profile.signing_policy},'completeForSigning',${profile.complete_for_signing}))`;
  return profile;
 }
 
