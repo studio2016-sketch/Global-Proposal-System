@@ -48,7 +48,7 @@ export default async function OperationsPage({searchParams}:{searchParams:Promis
 
    <section style={{minWidth:0}}>
     {!board?<div className="adminPanel"><div className="emptyAttention"><h2>Create a project to begin.</h2><p>WGOS projects can be internal initiatives or automatically activated from paid client work.</p></div></div>:
-     <OperationsBoardClient initialProject={board.project as any} initialTasks={board.tasks as any[]} dependencies={board.dependencies as any[]} users={board.users as any[]}/>}
+     <OperationsBoardClient initialProject={board.project as any} initialTasks={board.tasks as any[]} dependencies={board.dependencies as any[]} users={board.users as any[]} initialComments={board.comments as any[]} initialRecurringRules={board.recurringRules as any[]}/>}
    </section>
   </div>
  </main>;
