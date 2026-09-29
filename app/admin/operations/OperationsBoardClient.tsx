@@ -19,7 +19,7 @@ const priorities=["LOW","MEDIUM","HIGH","CRITICAL"];
 const label=(v:string)=>v.replaceAll("_"," ");
 const dateOnly=(v?:string|null)=>v?String(v).slice(0,10):"";
 
-export default function OperationsBoardClient({initialProject,initialTasks,dependencies,users,initialComments}:{initialProject:Project;initialTasks:Task[];dependencies:Dependency[];users:User[];initialComments:any[]}){
+export default function OperationsBoardClient({initialProject,initialTasks,dependencies,users,initialComments,canManageProject=true}:{initialProject:Project;initialTasks:Task[];dependencies:Dependency[];users:User[];initialComments:any[];canManageProject?:boolean}){
  const router=useRouter();
  const [project,setProject]=useState({...initialProject});
  const [tasks,setTasks]=useState(initialTasks.map(t=>({...t,due_at:dateOnly(t.due_at)})));
@@ -114,14 +114,14 @@ export default function OperationsBoardClient({initialProject,initialTasks,depen
 
   <section className="adminPanel">
    <div style={{display:"flex",justifyContent:"space-between",gap:16,alignItems:"flex-start",flexWrap:"wrap"}}>
-    <div><p className="eyebrow">{project.brand_name}</p><input aria-label="Project title" value={project.title} onChange={e=>setProject({...project,title:e.target.value})} style={{fontSize:"1.6rem",fontWeight:700,minWidth:300}}/>{project.organization_name&&<p className="muted">{project.organization_name}</p>}</div>
-    <button className="primary" disabled={busy==="project"} onClick={saveProject}>{busy==="project"?"Saving…":"Save Project"}</button>
+    <div><p className="eyebrow">{project.brand_name}</p><input aria-label="Project title" readOnly={!canManageProject} value={project.title} onChange={e=>setProject({...project,title:e.target.value})} style={{fontSize:"1.6rem",fontWeight:700,minWidth:300}}/>{project.organization_name&&<p className="muted">{project.organization_name}</p>}</div>
+    {canManageProject&&<button className="primary" disabled={busy==="project"} onClick={saveProject}>{busy==="project"?"Saving…":"Save Project"}</button>}
    </div>
    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:12,marginTop:14}}>
-    <label>Status<select value={project.status} onChange={e=>setProject({...project,status:e.target.value})}>{projectStatuses.map(s=><option key={s}>{s}</option>)}</select></label>
-    <label>Owner<select value={project.owner_subject||""} onChange={e=>setProject({...project,owner_subject:e.target.value})}><option value="">Unassigned</option>{users.map(u=><option key={u.auth_user_id} value={u.auth_user_id}>{u.display_name||u.email||u.auth_user_id}</option>)}</select></label>
-    <label>Start<input type="date" value={dateOnly(project.start_at)} onChange={e=>setProject({...project,start_at:e.target.value})}/></label>
-    <label>Target end<input type="date" value={dateOnly(project.end_at)} onChange={e=>setProject({...project,end_at:e.target.value})}/></label>
+    <label>Status<select disabled={!canManageProject} value={project.status} onChange={e=>setProject({...project,status:e.target.value})}>{projectStatuses.map(s=><option key={s}>{s}</option>)}</select></label>
+    <label>Owner<select disabled={!canManageProject} value={project.owner_subject||""} onChange={e=>setProject({...project,owner_subject:e.target.value})}><option value="">Unassigned</option>{users.map(u=><option key={u.auth_user_id} value={u.auth_user_id}>{u.display_name||u.email||u.auth_user_id}</option>)}</select></label>
+    <label>Start<input disabled={!canManageProject} type="date" value={dateOnly(project.start_at)} onChange={e=>setProject({...project,start_at:e.target.value})}/></label>
+    <label>Target end<input disabled={!canManageProject} type="date" value={dateOnly(project.end_at)} onChange={e=>setProject({...project,end_at:e.target.value})}/></label>
    </div>
   </section>
 
