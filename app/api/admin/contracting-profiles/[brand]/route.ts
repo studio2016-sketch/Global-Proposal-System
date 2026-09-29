@@ -18,6 +18,7 @@ export async function PUT(req:Request,{params}:{params:Promise<{brand:string}>})
    defaultSignerName:String(body.defaultSignerName||""),
    defaultSignerTitle:String(body.defaultSignerTitle||""),
    taxDisplayName:String(body.taxDisplayName||""),
+   signingPolicy:String(body.signingPolicy||"SINGLE_AUTHORIZED_SIGNER") as any,
    completeForSigning:Boolean(body.completeForSigning),
    actor:String((auth.identity as any).auth_user_id)
   });
