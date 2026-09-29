@@ -6,6 +6,7 @@ type Profile={
  brand_id:string;brand_name:string;contracting_name:string;legal_form:string|null;jurisdiction:string|null;
  notice_address:string|null;notice_email:string|null;default_signer_name:string|null;default_signer_title:string|null;
  tax_display_name:string|null;complete_for_signing:boolean;
+ relationship_type:string|null;ownership_claimed:boolean|null;planned_legal_form:string|null;may_bind_brand:boolean|null;governance_notes:string|null;
 };
 
 export default function ProfilesManager({initial}:{initial:Profile[]}){
@@ -44,7 +45,7 @@ export default function ProfilesManager({initial}:{initial:Profile[]}){
   {error&&<p className="muted">{error}</p>}
   {profiles.map(p=><section className="adminPanel" key={p.brand_id}>
    <div style={{display:"flex",justifyContent:"space-between",gap:16,alignItems:"center"}}>
-    <div><p className="eyebrow">{p.brand_name}</p><h2>{p.contracting_name}</h2></div>
+    <div><p className="eyebrow">{p.brand_name}</p><h2>{p.contracting_name}</h2><p className="muted">{p.relationship_type==="EXTERNAL_PARTNER"?"External Partner · No ownership claimed":"Controlled Brand"+(p.planned_legal_form?" · Planned "+p.planned_legal_form:"")}</p></div>
     <span className="status">{p.complete_for_signing?"COMPLETE FOR SIGNING":"INCOMPLETE"}</span>
    </div>
    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(240px,1fr))",gap:12}}>
@@ -57,10 +58,12 @@ export default function ProfilesManager({initial}:{initial:Profile[]}){
     <label>Tax / invoice display name<input value={p.tax_display_name||""} onChange={e=>patch(p.brand_id,"tax_display_name",e.target.value)}/></label>
    </div>
    <label style={{display:"block",marginTop:12}}>Notice address<textarea rows={3} value={p.notice_address||""} onChange={e=>patch(p.brand_id,"notice_address",e.target.value)}/></label>
+   {p.governance_notes&&<p className="privateNote">{p.governance_notes}</p>}
    <label style={{display:"flex",gap:8,alignItems:"center",marginTop:12}}>
-    <input type="checkbox" checked={p.complete_for_signing} onChange={e=>patch(p.brand_id,"complete_for_signing",e.target.checked)}/>
+    <input type="checkbox" disabled={p.relationship_type==="EXTERNAL_PARTNER"&&p.may_bind_brand!==true} checked={p.complete_for_signing} onChange={e=>patch(p.brand_id,"complete_for_signing",e.target.checked)}/>
     Legally verified and complete for signing
    </label>
+   {p.relationship_type==="EXTERNAL_PARTNER"&&p.may_bind_brand!==true&&<p className="privateNote">Signing is disabled because WGOS has no recorded authority to bind this external partner.</p>}
    <button className="primary" style={{marginTop:14}} disabled={busy===p.brand_id} onClick={()=>save(p)}>{busy===p.brand_id?"Saving…":"Save Contracting Profile →"}</button>
   </section>)}
  </div>;
