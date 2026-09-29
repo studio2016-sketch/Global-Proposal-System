@@ -45,3 +45,16 @@ export async function requireApiAdmin(){
  if(!["OWNER","ADMIN"].includes(String(identity.role)))return {ok:false as const,status:403,error:"ADMIN_REQUIRED"};
  return {ok:true as const,identity};
 }
+
+
+export async function requireUser(){
+ const identity=await currentIdentity();
+ if(!identity)redirect("/login");
+ return identity;
+}
+
+export async function requireApiUser(){
+ const identity=await currentIdentity();
+ if(!identity)return {ok:false as const,status:401,error:"AUTHENTICATION_REQUIRED"};
+ return {ok:true as const,identity};
+}
