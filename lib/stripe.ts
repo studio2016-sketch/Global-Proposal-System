@@ -2,33 +2,38 @@ import "server-only";
 
 const api="https://api.stripe.com/v1";
 
-function secret(){
- const v=process.env.STRIPE_SECRET_KEY;
- if(!v)throw new Error("Stripe is not configured.");
+function secretFromEnv(envName:string){
+ if(!/^[A-Z][A-Z0-9_]{2,127}$/.test(envName))throw new Error("Invalid Stripe credential environment variable.");
+ const v=process.env[envName];
+ if(!v)throw new Error("Stripe credentials are not configured for this contracting brand.");
  return v;
 }
 
-async function stripeRequest(path:string,init?:RequestInit){
+async function stripeRequest(path:string,secretEnvVar:string,init?:RequestInit){
  const headers=new Headers(init?.headers||{});
- headers.set("Authorization","Bearer "+secret());
+ headers.set("Authorization","Bearer "+secretFromEnv(secretEnvVar));
  headers.set("Accept","application/json");
- const r=await fetch(api+path,{...init,headers});
+ const r=await fetch(api+path,{...init,headers,cache:"no-store"});
  const d:any=await r.json();
  if(!r.ok)throw new Error(d?.error?.message||"Stripe request failed.");
  return d;
 }
 
-export function stripeConfigured(){
- return Boolean(process.env.STRIPE_SECRET_KEY&&process.env.WGOS_PUBLIC_BASE_URL);
+export function stripeProfileConfigured(input:{secretEnvVar?:string|null}){
+ const env=String(input.secretEnvVar||"");
+ return Boolean(process.env.WGOS_PUBLIC_BASE_URL&&env&&process.env[env]);
 }
 
 export async function createDepositCheckout(input:{
  paymentId:string;
  proposalId:string;
  snapshotId:string;
+ brandId:string;
  amount:number;
  currency:"USD";
  clientEmail?:string|null;
+ statementDescriptor?:string|null;
+ secretEnvVar:string;
 }){
  if(!Number.isFinite(input.amount)||input.amount<=0)throw new Error("Deposit amount must be positive.");
  const base=process.env.WGOS_PUBLIC_BASE_URL;
@@ -45,8 +50,10 @@ export async function createDepositCheckout(input:{
  form.set("metadata[wgos_payment_id]",input.paymentId);
  form.set("metadata[wgos_proposal_id]",input.proposalId);
  form.set("metadata[wgos_snapshot_id]",input.snapshotId);
+ form.set("metadata[wgos_brand_id]",input.brandId);
  if(input.clientEmail)form.set("customer_email",input.clientEmail);
- const d=await stripeRequest("/checkout/sessions",{
+ if(input.statementDescriptor)form.set("payment_intent_data[statement_descriptor]",input.statementDescriptor.slice(0,22));
+ const d=await stripeRequest("/checkout/sessions",input.secretEnvVar,{
   method:"POST",
   headers:{"Content-Type":"application/x-www-form-urlencoded","Idempotency-Key":"wgos-payment-"+input.paymentId},
   body:form
@@ -55,10 +62,10 @@ export async function createDepositCheckout(input:{
  return {externalId:String(d.id),status:String(d.status||"open"),url:String(d.url)};
 }
 
-export async function retrieveStripeEvent(eventId:string){
- return stripeRequest("/events/"+encodeURIComponent(eventId));
+export async function retrieveStripeEvent(eventId:string,secretEnvVar:string){
+ return stripeRequest("/events/"+encodeURIComponent(eventId),secretEnvVar);
 }
 
-export async function retrieveCheckoutSession(sessionId:string){
- return stripeRequest("/checkout/sessions/"+encodeURIComponent(sessionId));
+export async function retrieveCheckoutSession(sessionId:string,secretEnvVar:string){
+ return stripeRequest("/checkout/sessions/"+encodeURIComponent(sessionId),secretEnvVar);
 }
