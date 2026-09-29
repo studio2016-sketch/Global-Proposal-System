@@ -2,7 +2,7 @@ import {getLegalReadiness} from "../../../lib/persistence";
 import {authConfigured} from "../../../lib/authz";
 import {signWellConfigured} from "../../../lib/signwell";
 import {resendConfigured} from "../../../lib/resend";
-import {stripeConfigured} from "../../../lib/stripe";
+import {stripeProfileConfigured} from "../../../lib/stripe";
 
 function Flag({ok,label,detail}:{ok:boolean;label:string;detail?:string}){
  return <div style={{padding:16,border:"1px solid rgba(255,255,255,.14)",borderRadius:14}}>
@@ -20,7 +20,6 @@ export default async function Readiness(){
   {label:"Resend Proposal Delivery",ok:resendConfigured(),detail:"Requires API key, default sender identity, and WGOS public base URL."},
   {label:"Resend Webhook Verification",ok:Boolean(process.env.RESEND_WEBHOOK_SECRET),detail:"Required to verify delivery/open/click/bounce lifecycle events."},
   {label:"SignWell Embedded Signing",ok:signWellConfigured(),detail:"Requires SignWell API key and approved template ID."},
-  {label:"Stripe Checkout",ok:stripeConfigured(),detail:"Requires Stripe secret key and WGOS public base URL."},
   {label:"Production Database",ok:Boolean(process.env.DATABASE_URL),detail:"Neon PostgreSQL connection used as WGOS system of record."}
  ];
 
@@ -40,6 +39,9 @@ export default async function Readiness(){
     {legal.map(b=>{
      const externalBlocked=b.relationship_type==="EXTERNAL_PARTNER"&&!b.may_bind_brand;
      const ready=Boolean(b.complete_for_signing)&&Number(b.verified_signers)>0&&Number(b.approved_terms)>0&&!externalBlocked&&Number(b.unverified_required_signers)===0;
+     const stripeSecretReady=b.secret_env_var?stripeProfileConfigured({secretEnvVar:String(b.secret_env_var)}):false;
+     const webhookSecretReady=Boolean(b.webhook_secret_env_var&&process.env[String(b.webhook_secret_env_var)]);
+     const paymentReady=b.payment_mode==="DIRECT_STRIPE_ACCOUNT"&&b.complete_for_payment===true&&stripeSecretReady&&webhookSecretReady;
      const blockers=[
       !b.legal_form?"legal form":null,
       !b.jurisdiction?"jurisdiction":null,
@@ -50,13 +52,21 @@ export default async function Readiness(){
       Number(b.approved_terms)===0?"approved agreement terms":null,
       externalBlocked?"written authority to bind external partner":null
      ].filter(Boolean);
+     const paymentBlockers=[
+      b.payment_mode!=="DIRECT_STRIPE_ACCOUNT"?"direct Stripe account routing":null,
+      !b.complete_for_payment?"payment profile approval":null,
+      !stripeSecretReady?"brand Stripe secret in Vercel":null,
+      !webhookSecretReady?"brand Stripe webhook secret in Vercel":null
+     ].filter(Boolean);
      return <div key={b.brand_id} style={{padding:16,border:"1px solid rgba(255,255,255,.14)",borderRadius:14}}>
       <div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center"}}>
        <div><strong>{b.brand_name}</strong><p className="muted">{b.contracting_name||"Contracting identity incomplete"} · {b.legal_form||"Legal form pending"}{b.planned_legal_form?" → planned "+b.planned_legal_form:""}</p></div>
        <span className="status">{ready?"SIGNING READY":"BLOCKED"}</span>
       </div>
       <p className="privateNote">Policy: {b.signing_policy||"not set"} · Verified signers: {Number(b.verified_signers)} · Approved terms: {Number(b.approved_terms)} · Draft terms: {Number(b.draft_terms)}</p>
-      {!ready&&<p className="muted">Remaining: {blockers.join(", ")||"legal review"}</p>}
+      {!ready&&<p className="muted">Legal remaining: {blockers.join(", ")||"legal review"}</p>}
+      <p className="privateNote">Payment: {b.payment_mode||"DISABLED"} · {paymentReady?"READY":"BLOCKED"} · Webhook: /api/webhooks/stripe/{b.brand_id}</p>
+      {!paymentReady&&<p className="muted">Payment remaining: {paymentBlockers.join(", ")||"payment configuration"}</p>}
      </div>;
     })}
    </div>
