@@ -27,3 +27,13 @@ SELECT b.id,
 FROM wgos.brands b
 LEFT JOIN wgos.brand_governance bg ON bg.brand_id=b.id
 ON CONFLICT(brand_id) DO NOTHING;
+
+
+-- Reserved secure environment-variable names. These are identifiers only; no credentials live in the database.
+UPDATE wgos.brand_payment_profiles SET secret_env_var='STRIPE_SECRET_KEY_STUDIO2016',webhook_secret_env_var='STRIPE_WEBHOOK_SECRET_STUDIO2016',statement_descriptor='STUDIO2016' WHERE brand_id='studio2016';
+UPDATE wgos.brand_payment_profiles SET secret_env_var='STRIPE_SECRET_KEY_JERMAINE',webhook_secret_env_var='STRIPE_WEBHOOK_SECRET_JERMAINE',statement_descriptor='JERMAINE WILLIAMS' WHERE brand_id='jermaine';
+UPDATE wgos.brand_payment_profiles SET secret_env_var='STRIPE_SECRET_KEY_CHARMIN',webhook_secret_env_var='STRIPE_WEBHOOK_SECRET_CHARMIN',statement_descriptor='CHARMIN GREENE' WHERE brand_id='charmin';
+UPDATE wgos.brand_payment_profiles SET secret_env_var='STRIPE_SECRET_KEY_CHARMIN_JERMAINE',webhook_secret_env_var='STRIPE_WEBHOOK_SECRET_CHARMIN_JERMAINE',statement_descriptor='CHARMIN JERMAINE' WHERE brand_id='charminJermaine';
+UPDATE wgos.brand_payment_profiles SET secret_env_var='STRIPE_SECRET_KEY_CG_SUCCESS',webhook_secret_env_var='STRIPE_WEBHOOK_SECRET_CG_SUCCESS',statement_descriptor='CG SUCCESS' WHERE brand_id='cgSuccess';
+UPDATE wgos.brand_payment_profiles SET secret_env_var='STRIPE_SECRET_KEY_SOUND_LEGACY',webhook_secret_env_var='STRIPE_WEBHOOK_SECRET_SOUND_LEGACY',statement_descriptor='SOUND LEGACY' WHERE brand_id='soundLegacy';
+UPDATE wgos.brand_payment_profiles SET secret_env_var='STRIPE_SECRET_KEY_DIONNES_BOUTIQUE',webhook_secret_env_var='STRIPE_WEBHOOK_SECRET_DIONNES_BOUTIQUE',statement_descriptor='DIONNES BOUTIQUE' WHERE brand_id='dionnesBoutique';
