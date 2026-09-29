@@ -1,5 +1,5 @@
 export type ProviderResult={externalId:string;status:string;url?:string};
-export type SignatureRequest={agreementId:string;agreementHash:string;proposalId:string;snapshotHash:string;clientName:string;clientEmail:string;title:string;returnUrl?:string};
+export type SignatureRequest={agreementId:string;agreementHash:string;proposalId:string;snapshotHash:string;clientName?:string;clientEmail:string;title:string;returnUrl?:string};
 export interface SignatureProvider{
   providerName:string;
   createEmbeddedSignature(input:SignatureRequest):Promise<ProviderResult>;
