@@ -692,3 +692,12 @@ export async function updateContractingProfile(input:{
   jsonb_build_object('contractingName',${profile.contracting_name},'legalForm',${profile.legal_form},'jurisdiction',${profile.jurisdiction},'completeForSigning',${profile.complete_for_signing}))`;
  return profile;
 }
+
+export async function listBrandDirectory(){
+ const sql=db();
+ return sql`SELECT b.id,b.name,
+  bg.relationship_type,bg.ownership_claimed,bg.planned_legal_form,bg.may_bind_brand
+ FROM wgos.brands b
+ LEFT JOIN wgos.brand_governance bg ON bg.brand_id=b.id
+ ORDER BY b.name`;
+}
