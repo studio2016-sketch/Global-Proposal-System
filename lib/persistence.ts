@@ -892,6 +892,12 @@ export async function getLegalReadiness(){
   bg.ownership_claimed,
   bg.planned_legal_form,
   bg.may_bind_brand,
+  bpp.payment_mode,
+  bpp.currency AS payment_currency,
+  bpp.stripe_account_id,
+  bpp.secret_env_var,
+  bpp.webhook_secret_env_var,
+  bpp.complete_for_payment,
   COALESCE((SELECT count(*)::int FROM wgos.contracting_signers s WHERE s.brand_id=b.id AND s.authority_status='VERIFIED'),0) AS verified_signers,
   COALESCE((SELECT count(*)::int FROM wgos.contracting_signers s WHERE s.brand_id=b.id AND s.required_to_sign=true AND s.authority_status<>'VERIFIED'),0) AS unverified_required_signers,
   COALESCE((SELECT count(*)::int FROM wgos.agreement_terms t WHERE t.brand_id=b.id AND t.status='APPROVED'),0) AS approved_terms,
@@ -899,6 +905,7 @@ export async function getLegalReadiness(){
  FROM wgos.brands b
  LEFT JOIN wgos.contracting_profiles cp ON cp.brand_id=b.id
  LEFT JOIN wgos.brand_governance bg ON bg.brand_id=b.id
+ LEFT JOIN wgos.brand_payment_profiles bpp ON bpp.brand_id=b.id
  ORDER BY b.name`;
 }
 
