@@ -901,3 +901,17 @@ export async function getLegalReadiness(){
  LEFT JOIN wgos.brand_governance bg ON bg.brand_id=b.id
  ORDER BY b.name`;
 }
+
+export async function getPendingPaymentVerificationContext(paymentId:string){
+ const sql=db();
+ const rows=await sql`SELECT pay.id AS payment_id,pay.proposal_id,pay.snapshot_id,pay.status,pay.provider,pay.provider_external_id,
+  p.brand_id,bpp.payment_mode,bpp.secret_env_var,bpp.webhook_secret_env_var,bpp.complete_for_payment
+ FROM wgos.payments pay
+ JOIN wgos.proposals p ON p.id=pay.proposal_id
+ LEFT JOIN wgos.brand_payment_profiles bpp ON bpp.brand_id=p.brand_id
+ WHERE pay.id=${paymentId}::uuid
+   AND pay.status='PAYMENT_PENDING'
+   AND pay.provider='stripe'
+ LIMIT 1`;
+ return rows[0]??null;
+}
