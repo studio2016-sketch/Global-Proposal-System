@@ -640,7 +640,7 @@ export async function approveAgreementTerms(input:{id:string;actor:string}){
 
 export async function listContractingProfiles(){
  const sql=db();
- return sql`SELECT cp.brand_id,b.name AS brand_name,cp.contracting_name,cp.legal_form,cp.jurisdiction,cp.notice_address,cp.notice_email,cp.default_signer_name,cp.default_signer_title,cp.tax_display_name,cp.complete_for_signing,cp.updated_at,
+ return sql`SELECT cp.brand_id,b.name AS brand_name,cp.contracting_name,cp.legal_form,cp.jurisdiction,cp.notice_address,cp.notice_email,cp.default_signer_name,cp.default_signer_title,cp.tax_display_name,cp.complete_for_signing,cp.signing_policy,cp.updated_at,
   bg.relationship_type,bg.ownership_claimed,bg.planned_legal_form,bg.may_bind_brand,bg.governance_notes
  FROM wgos.contracting_profiles cp
  JOIN wgos.brands b ON b.id=cp.brand_id
@@ -700,4 +700,54 @@ export async function listBrandDirectory(){
  FROM wgos.brands b
  LEFT JOIN wgos.brand_governance bg ON bg.brand_id=b.id
  ORDER BY b.name`;
+}
+
+export async function listContractingSigners(){
+ const sql=db();
+ return sql`SELECT id,brand_id,signer_name,signer_title,authority_status,authority_basis,required_to_sign,verified_at,created_at,updated_at
+ FROM wgos.contracting_signers
+ ORDER BY brand_id,created_at`;
+}
+
+export async function createContractingSigner(input:{
+ brandId:string;signerName:string;signerTitle?:string;authorityBasis?:string;requiredToSign:boolean;actor:string;
+}){
+ const name=input.signerName.trim();
+ if(!name)throw new Error("Signer name is required.");
+ const sql=db();
+ const rows=await sql`INSERT INTO wgos.contracting_signers(
+  brand_id,signer_name,signer_title,authority_status,authority_basis,required_to_sign
+ ) VALUES(
+  ${input.brandId},${name},${(input.signerTitle||"").trim()||null},'PENDING',
+  ${(input.authorityBasis||"").trim()||null},${Boolean(input.requiredToSign)}
+ ) RETURNING *`;
+ const signer:any=rows[0];
+ await sql`INSERT INTO wgos.audit_events(actor_subject,action,entity_type,entity_id,metadata)
+ VALUES(${input.actor},'CONTRACTING_SIGNER_ADDED','CONTRACTING_SIGNER',${signer.id}::text,
+ jsonb_build_object('brand',${input.brandId},'signerName',${name},'requiredToSign',${Boolean(input.requiredToSign)}))`;
+ return signer;
+}
+
+export async function updateContractingSigner(input:{
+ id:string;signerName:string;signerTitle?:string;authorityBasis?:string;requiredToSign:boolean;authorityStatus:"PENDING"|"VERIFIED"|"REVOKED";actor:string;
+}){
+ const name=input.signerName.trim();
+ if(!name)throw new Error("Signer name is required.");
+ if(input.authorityStatus==="VERIFIED"&&!(input.authorityBasis||"").trim())throw new Error("Authority basis is required before a signer can be verified.");
+ const sql=db();
+ const rows=await sql`UPDATE wgos.contracting_signers
+ SET signer_name=${name},
+     signer_title=${(input.signerTitle||"").trim()||null},
+     authority_basis=${(input.authorityBasis||"").trim()||null},
+     required_to_sign=${Boolean(input.requiredToSign)},
+     authority_status=${input.authorityStatus},
+     verified_at=CASE WHEN ${input.authorityStatus}='VERIFIED' THEN COALESCE(verified_at,now()) ELSE verified_at END,
+     updated_at=now()
+ WHERE id=${input.id}::uuid
+ RETURNING *`;
+ const signer:any=rows[0];if(!signer)throw new Error("Signer record not found.");
+ await sql`INSERT INTO wgos.audit_events(actor_subject,action,entity_type,entity_id,metadata)
+ VALUES(${input.actor},'CONTRACTING_SIGNER_UPDATED','CONTRACTING_SIGNER',${signer.id}::text,
+ jsonb_build_object('brand',${signer.brand_id},'signerName',${signer.signer_name},'authorityStatus',${signer.authority_status},'requiredToSign',${signer.required_to_sign}))`;
+ return signer;
 }
