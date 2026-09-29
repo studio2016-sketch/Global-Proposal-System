@@ -20,7 +20,8 @@ export default async function Readiness(){
   {label:"Resend Proposal Delivery",ok:resendConfigured(),detail:"Requires API key, default sender identity, and WGOS public base URL."},
   {label:"Resend Webhook Verification",ok:Boolean(process.env.RESEND_WEBHOOK_SECRET),detail:"Required to verify delivery/open/click/bounce lifecycle events."},
   {label:"SignWell Embedded Signing",ok:signWellConfigured(),detail:"Requires SignWell API key and approved template ID."},
-  {label:"Production Database",ok:Boolean(process.env.DATABASE_URL),detail:"Neon PostgreSQL connection used as WGOS system of record."}
+  {label:"Production Database",ok:Boolean(process.env.DATABASE_URL),detail:"Neon PostgreSQL connection used as WGOS system of record."},
+  {label:"Operations Scheduler",ok:Boolean(process.env.CRON_SECRET),detail:"Vercel Cron runs due recurring work every 15 minutes when CRON_SECRET is configured."}
  ];
 
  return <main className="admin">
